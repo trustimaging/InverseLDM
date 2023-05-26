@@ -1,0 +1,122 @@
+data:
+    dataset: Brain2D
+    data_path: /home/dp4018/data/ultrasound-data/Ultrasound-MRI-sagittal/
+    mode: mri
+    maxsamples: null
+    image_size: 128
+    scale: [-1, 1]
+    clip_outliers: outer
+    to_tensor: false
+    normalise: false
+    channels: 1
+
+logging:
+    tool: tensorboard
+
+autoencoder:
+    model:
+        in_channels: 1
+        out_channels: 1
+        ch: 128
+        z_channels : 2
+        emb_channels : 2
+        ch_mult: [1, 2, 4]
+        num_res_blocks: 2
+        attn_resolutions: [16]
+        dropout: 0.0
+        recon_loss: l2
+        div_loss: kl
+        perceptual_loss: null
+
+    params:
+        div_weight: 0.00001
+        perceptual_weight: 1.
+        recon_weight: 1.
+        
+    training:
+        batch_size: 4
+        n_epochs: 300
+        save_recon_freq: 500 
+        ckpt_freq: 100
+        ckpt_last_only: true
+        num_workers: 4
+
+    validation:
+        split: 0.1
+        batch_size: 4
+        freq: 50
+        save_recon_freq: 500
+        num_workers: 4
+
+    sampling:
+        sampling_only: false
+        batch_size: 4
+        freq: 500
+
+    optim:
+        weight_decay: 0.000
+        optimiser: "Adam"
+        lr: 0.00002
+        beta1: 0.9
+        amsgrad: false
+        eps: 0.00000001
+        grad_clip: null
+        
+        lr_scheduler:
+            scheduler: null
+
+diffusion:
+    model:
+        ch: 128
+        ch_mult: [1, 1, 2, 2]
+        num_res_blocks: 2
+        attn_resolutions: [4, ]
+        dropout: 0.0
+        ema_rate: 0.999
+        loss: l2
+
+    params:
+        beta_schedule: linear
+        beta_start: 0.0001
+        beta_end: 0.02
+        num_diffusion_timesteps: 500
+        latent_scaling_factor: 1.
+        sampler : ddpm
+
+    training:
+        batch_size: 4
+        n_epochs: 300
+        ckpt_freq: 100
+        ckpt_last_only: true
+        num_workers: 4 
+
+    validation:
+        split: 0.1
+        batch_size: 4
+        freq: 50
+        num_workers: 4
+    sampling:
+        sampling_only: false
+        batch_size: 4
+        freq: 500
+        output: last_only
+
+    optim:
+        weight_decay: 0.000
+        optimiser: "Adam"
+        lr: 0.00002
+        beta1: 0.9
+        amsgrad: false
+        eps: 0.00000001
+        grad_clip: null
+
+        lr_scheduler:
+            scheduler: null
+
+seismic:
+    data_file: null
+    mode: pids
+    save_condition: True
+
+    params:
+        frequency: 50
