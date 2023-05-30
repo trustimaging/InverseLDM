@@ -1,5 +1,7 @@
 import torch
 import torch.nn.functional as F
+from awloss import AWLoss
+from utils.utils import scale2range
 
 
 def divergence(args, mean, log_var):
@@ -17,6 +19,10 @@ def divergence(args, mean, log_var):
 def perceptual(args, input, recon):
     if not args.model.perceptual_loss:
         return torch.tensor([0.])
+    elif args.model.perceptual_loss == "wiener":
+        awloss = AWLoss(filter_dim=2, method="fft", reduction="mean", store_filters="unorm",
+                        epsilon=250., filter_scale=2, penalty_function=laplacian2D)
+        return awloss(input, recon)
     else:
         raise NotImplementedError(
             "Currently not supporting perceptual losses"
@@ -38,3 +44,12 @@ def reconstruction(args, input, recon):
         raise NotImplementedError(
             "Currently only supporting the L1 and L2 reconstruction losses"
         )
+
+
+def laplacian2D(mesh):
+    alpha, beta = -0.2, 1.5
+    xx, yy = mesh[:,:,0], mesh[:,:,1]
+    x = torch.sqrt(xx**2 + yy**2) 
+    T = 1 - torch.exp(-torch.abs(x) ** alpha) ** beta
+    T = scale2range(T, [0.05, 1.])
+    return T
