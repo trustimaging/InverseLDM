@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 from abc import ABC, abstractmethod
 
-from utils.utils import namespace2dict
+from utils.utils import namespace2dict, gpu_diagnostics
 from utils.visualisation import visualise_samples
 
 torch.set_printoptions(sci_mode=False)
@@ -263,10 +263,15 @@ class BaseTrainer(ABC):
                             except KeyError:
                                 pass
 
+
+                        # Memory diagnostics:
+                        # gpu_diagnostics()
+
                         # Save a sample batch fig
                         if not self.args.sampling.sampling_only and self.args.sampling.freq > 0 and self.steps % self.args.sampling.freq == 0:
                             try:
                                 sample = self.sample(n_samples=self.args.sampling.batch_size)
+                                # gpu_diagnostics()
                                 self.save_figure(sample, "training", "sample")
                                 if logger:
                                     logger.log_figure(
@@ -274,8 +279,10 @@ class BaseTrainer(ABC):
                                         fig=visualise_samples(sample, scale=True),
                                         step=self.steps
                                     )
+                                sample = sample.to("cpu")
                             except NotImplementedError:
                                 pass
+
 
                         # Validate batch
                         if valid_iterator:
@@ -328,6 +335,8 @@ class BaseTrainer(ABC):
                                         )
                                     except KeyError:
                                         pass
+                                # Memory diagnostics
+                                # gpu_diagnostics()
 
                         # Save training checkpoints
                         if (self.args.training.ckpt_freq > 0 and self.steps % self.args.training.ckpt_freq == 0) or epoch == self.args.training.n_epochs:
@@ -365,3 +374,4 @@ class BaseTrainer(ABC):
             avg_loss = total_loss / len(self.valid_loader.dataset)
             logging.info(f"{self.args.name.lower().capitalize()} Average validation loss: {avg_loss.item()}")
         return None
+
