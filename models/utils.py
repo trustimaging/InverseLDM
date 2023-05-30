@@ -94,10 +94,6 @@ def data_parallel_wrapper(module, device, **kwargs):
     if device == "cpu":
         return DataParallelCPU(module)
     else:
-        # os.environ['MASTER_ADDR'] = 'localhost'
-        # os.environ['MASTER_PORT'] = '12355'
-        # torch.distributed.init_process_group(rank=0, world_size=2)
-        # return nn.parallel.DistributedDataParallel(module, **kwargs)
         return nn.DataParallel(module, **kwargs)
 
         
