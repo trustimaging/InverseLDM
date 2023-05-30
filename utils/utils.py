@@ -1,5 +1,7 @@
 import argparse
 import torch
+import nvidia_smi
+import logging
 
 
 def dict2namespace(dictionary: dict) -> argparse.Namespace:
@@ -55,3 +57,14 @@ def clip_outliers(x, fence="outer"):
     x[torch.where(x < lower)] = lower
     x[torch.where(x > upper)] = upper
     return x
+
+
+def gpu_diagnostics(pretext=""):
+    nvidia_smi.nvmlInit()
+
+    deviceCount = nvidia_smi.nvmlDeviceGetCount()
+    for i in range(deviceCount):
+        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(i)
+        info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+        logging.info("{} -- Device {}: {}, Memory : ({:.2f}% free): {}(total), {} (free), {} (used)".format(pretext, i, nvidia_smi.nvmlDeviceGetName(handle), 100*info.free/info.total, info.total, info.free, info.used))
+    nvidia_smi.nvmlShutdown()
