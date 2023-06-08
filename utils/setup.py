@@ -31,7 +31,7 @@ def setup_train():
     check_tracking_tool(args)
 
     # create relevant folders
-    create_experiment_folders(args)
+    create_training_experiment_folders(args)
 
     # setup seeds and devices
     set_seed(args.run.seed)
@@ -51,6 +51,46 @@ def setup_train():
         config = "\n\n ------------------------------ RESUMED CONFIGURATION ------------------------------ " + namespcae_summary_ticket(args)
     else:
         config = "\n\n ---------------------------------- CONFIGURATION ---------------------------------- " + namespcae_summary_ticket(args)
+    logging.info(config)
+
+    return args
+
+
+def setup_sampling():
+    # getting cl and yml args
+    args = parse_args()
+
+    # add default args to missing args
+    default_missing_args(args)
+
+    # check devices
+    check_devices(args)
+
+    # checking tracking tool
+    check_tracking_tool(args)
+
+    # create relevant folders
+    create_sampling_experiment_folders(args)
+
+    # setup seeds and devices
+    set_seed(args.run.seed)
+
+    # set up loggers
+    setup_logger(args)
+
+    # for sampling, we must make sure the sampling_only flags are on
+    args.autoencoder.sampling.sampling_only = True
+    args.diffusion.sampling.sampling_only = True
+
+    # save updated args as config in log folder
+    with open(os.path.join(args.run.log_folder, "config.yml"), "w") as f:
+        yaml.dump(args, f, default_flow_style=False)
+
+    # Set up tracker -- note this should come AFTER the yaml dump
+    setup_model_tracker(args)
+
+    # std out experiment summary ticket
+    config = "\n\n ---------------------------------- SAMPLING CONFIGURATION ---------------------------------- " + namespcae_summary_ticket(args)
     logging.info(config)
 
     return args
@@ -123,21 +163,29 @@ def parse_args():
         "--use_pretrained",
         action="store_true",
         help="Whether to load a pretrained model training. Used in conjunction\
-            with checkpoint flag. If not specified, will use latest."
+            with checkpoint flag. If checkpoint not specified, will use latest model."
     )
-    parser.add_argument(
-        "--checkpoint",
-        default="",
-        help="Checkpoint .pth file to load or step number to load from\
-                log dir.If checkpoint is a file, the saved state must be a\
-                dictionary containing 'model_state_dict',\
-                'optimiser.state_dict', 'epoch' and 'step'"
-    )
+    # parser.add_argument(
+    #     "--autoencoder_checkpoint",
+    #     default="",
+    #     help="Checkpoint .pth file to load or step number to load from\
+    #             log dir. If checkpoint is a file, the saved state must be a\
+    #             dictionary containing 'model_state_dict',\
+    #             'optimiser.state_dict', 'epoch' and 'step'"
+    # )
+    # parser.add_argument(
+    #     "--diffusion_checkpoint",
+    #     default="",
+    #     help="Checkpoint .pth file to load or step number to load from\
+    #             log dir. If checkpoint is a file, the saved state must be a\
+    #             dictionary containing 'model_state_dict',\
+    #             'optimiser.state_dict', 'epoch' and 'step'"
+    # )
     parser.add_argument(
         "--resume_training",
         action="store_true",
         help="Whether to resume training. Used in conjunction\
-            with checkpoint flag. If not specified, will use latest."
+            with checkpoint flag in yaml config. If checkpoint not specified, will use latest model."
     )
     parser.add_argument(
         "--overwrite", action="store_true", help="Whether to \
@@ -284,14 +332,14 @@ def create_folder(folder, overwrite=False, exception=True):
             logging.info(f"Done!")
         else:
             if exception:
-                raise Exception(FileExistsError, f"Experiment folder {folder} already exists. Use the --overwrite flag if you wish to overwrite")
+                raise Exception(FileExistsError, f"Experiment folder {folder} already exists. Use the --overwrite flag if you wish to overwrite or --resume_training flag to continue training from a checkpoint.")
             else:
                 pass
     return None
 
 
-def create_experiment_folders(args):
-    # Check overwrite
+def create_training_experiment_folders(args):
+    # Whether to raise overwriting exception when folder already exists
     if args.run.resume_training:
         exception = False
     else:
@@ -342,16 +390,48 @@ def create_experiment_folders(args):
         recon_folder = os.path.join(autoencoder_log_path, "recons")
         args.autoencoder.recon_path = recon_folder
         create_folder(recon_folder, args.run.overwrite, exception)
-    # if (args.diffusion.training.save_recon_freq > 0 or args.diffusion.validation.save_recon_freq > 0):
-    #     recon_folder = os.path.join(diffusion_log_path, "recons")
-    #     args.diffusion.recon_path = recon_folder
-    #     create_folder(recon_folder, args.run.overwrite, exception)
 
     # Create seismic folder
     if args.seismic.data_file and args.seismic.save_condition and args.seismic.mode != "full":
         seismic_folder = os.path.join(args.run.exp_folder, "seismic")
         args.seismic.seismic_path = seismic_folder
         create_folder(seismic_folder, args.run.overwrite, exception)
+
+    return None
+
+
+def create_sampling_experiment_folders(args):
+
+    # Check experiment exists
+    assert os.path.exists(args.run.exp_folder), f"Experiment folder {args.run.exp_folder} not found. "
+    assert os.path.exists(args.run.log_folder), f"Experiment logging folder {args.run.log_folder} not found. "
+
+    autoencoder_log_path = os.path.join(args.run.log_folder, "autoencoder")
+    args.autoencoder.log_path = autoencoder_log_path
+    assert os.path.exists(autoencoder_log_path), f" Autoencoder logging folder {autoencoder_log_path} not found. " 
+
+    diffusion_log_path = os.path.join(args.run.log_folder, "diffusion")
+    args.diffusion.log_path = diffusion_log_path
+    assert os.path.exists(diffusion_log_path), f" Diffusion logging folder {diffusion_log_path} not found. " 
+
+    autoencoder_ckpt_path = os.path.join(autoencoder_log_path, "checkpoints")
+    args.autoencoder.ckpt_path = autoencoder_ckpt_path
+    assert os.path.exists(autoencoder_ckpt_path), f" Autoencoder checkpoint folder {autoencoder_ckpt_path} not found. " 
+
+    diffusion_ckpt_path = os.path.join(diffusion_log_path, "checkpoints")
+    args.diffusion.ckpt_path = diffusion_ckpt_path
+    assert os.path.exists(diffusion_ckpt_path), f" Autoencoder checkpoint folder {diffusion_ckpt_path} not found. " 
+
+    # Create samples folders
+    samples_folder = os.path.join(args.run.exp_folder, "samples")
+    args.run.samples_folder = samples_folder
+    create_folder(samples_folder, args.run.overwrite, exception=False)
+
+    # Create seismic folder
+    if args.seismic.data_file and args.seismic.save_condition and args.seismic.mode != "full":
+        seismic_folder = os.path.join(args.run.exp_folder, "seismic")
+        args.seismic.seismic_path = seismic_folder
+        create_folder(seismic_folder, args.run.overwrite, exception=False)
 
     return None
 
