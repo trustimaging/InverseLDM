@@ -1,7 +1,9 @@
-import numpy as np
 import logging
 
-from torch.utils.data import DataLoader, Subset
+import torch
+import numpy as np
+
+from torch.utils.data import DataLoader, Subset, TensorDataset
 
 from .base_dataset import BaseDataset
 
@@ -26,11 +28,15 @@ def _instance_dataloader(args, dataset):
     if dataset and len(dataset) > 0:
         dataloader = DataLoader(dataset,
                                 batch_size=args.batch_size,
-                                shuffle=True,
+                                shuffle=False,
                                 num_workers=args.num_workers)
         return dataloader
     else:
         return None
+
+
+def _wrap_tensor_dataset(dataset):
+    return TensorDataset(dataset, torch.zeros(dataset.shape[0]))
 
 
 def _split_valid_dataset(args, dataset):
