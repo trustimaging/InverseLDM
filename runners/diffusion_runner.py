@@ -1,14 +1,14 @@
 import torch
 import torch.nn as nn
 
-from . import BaseTrainer
+from . import BaseRunner
 
 from models.utils import (_instance_diffusion_model, _instance_optimiser,
                           _instance_diffusion_loss_fn, _instance_lr_scheduler,
                           data_parallel_wrapper)
 
 
-class DiffusionTrainer(BaseTrainer):
+class DiffusionRunner(BaseRunner):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
@@ -68,12 +68,23 @@ class DiffusionTrainer(BaseTrainer):
         }
         return output
     
+    # @torch.no_grad()
+    # def sample(self, n_samples=None, **kwargs):
+    #     # One autoencoder forward pass to get shape of latent space -- can be optimised!
+    #     ch, h, w = self.train_loader.dataset.dataset[0][0].shape
+    #     z = self.model.module.ldm.autoencoder_encode(torch.randn(n_samples, ch, h, w,
+    #                                                       device=self.model.module.device))
+
+    #     # Sample latent space with diffusion model and decode to reconstruct image
+    #     z_sample = self.model.module.sampler.sample(shape=z.shape,
+    #                                                 cond=None)
+    #     sample = self.model.module.ldm.autoencoder_decode(z_sample)
+    #     return sample
+
     @torch.no_grad()
-    def sample(self, n_samples=None, **kwargs):
+    def sample_step(self, input, **kwargs):
         # One autoencoder forward pass to get shape of latent space -- can be optimised!
-        ch, h, w = self.train_loader.dataset.dataset[0][0].shape
-        z = self.model.module.ldm.autoencoder_encode(torch.randn(n_samples, ch, h, w,
-                                                          device=self.model.module.device))
+        z = self.model.module.ldm.autoencoder_encode(input)
 
         # Sample latent space with diffusion model and decode to reconstruct image
         z_sample = self.model.module.sampler.sample(shape=z.shape,

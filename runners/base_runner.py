@@ -8,6 +8,7 @@ import logging
 import matplotlib.pyplot as plt
 
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from utils.utils import namespace2dict, gpu_diagnostics
 from utils.visualisation import visualise_samples
@@ -15,15 +16,16 @@ from utils.visualisation import visualise_samples
 torch.set_printoptions(sci_mode=False)
 
 
-class BaseTrainer(ABC):
+class BaseRunner(ABC):
     def __init__(self, **kwargs) -> None:
 
         self.args = kwargs.pop("args")
         self.logging_args = kwargs.pop("args_logging")
         self.run_args = kwargs.pop("args_run")
 
-        self.train_loader = kwargs.pop("train_loader")
+        self.train_loader = kwargs.pop("train_loader", None)
         self.valid_loader = kwargs.pop("valid_loader", None)
+        self.sample_loader = kwargs.pop("sample_loader", None)
 
         self.device = self.run_args.device
         self.gpu_ids = self.run_args.gpu_ids
@@ -54,8 +56,13 @@ class BaseTrainer(ABC):
         """ Function performs one batch validation step. Input is a batch for validating """
         return NotImplementedError
     
+    # @torch.no_grad()
+    # def sample(self, n_samples=None, **kwargs) -> dict:
+    #     """ Function performs sampling of self.model. n_samples is the number of samples to generate"""
+    #     return NotImplementedError
+
     @torch.no_grad()
-    def sample(self, n_samples=None, **kwargs) -> dict:
+    def sample_step(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
         """ Function performs sampling of self.model. n_samples is the number of samples to generate"""
         return NotImplementedError
 
@@ -86,52 +93,111 @@ class BaseTrainer(ABC):
         logging.info(f"Saved {self.args.name.lower()} checkpoint {path}")
         return None
 
-    def load_checkpoint(self, path: str = "") -> None:
+    def load_checkpoint(self, path: str = "", model_only: Optional[bool] = False) -> None:
         if not path:
             try:
                 latest_ckpt_name = [f for f in os.listdir(self.args.ckpt_path) if fnmatch.fnmatch(f, "*latest*")][0]
                 path = os.path.join(self.args.ckpt_path, latest_ckpt_name)
             except IndexError as e:
-                if self.run_args.y:
-                    return None
+                if self.args.sampling.sampling_only:
+                    logging.critical(f"Could not find latest {self.args.name.lower()} model. Please specify checkpoint path to load.")
+                    raise IndexError(e)
                 else:
-                    user_input = input(f"Could not find latest {self.args.name.lower()} model. Proceed from scratch? (Y/N): ")
-                    if user_input.lower() == "y" or user_input.lower() == "yes":
+                    if self.run_args.y:
                         return None
                     else:
-                        logging.critical(f"Aborting...")
-                        raise IndexError(e)
+                        user_input = input(f"Could not find latest {self.args.name.lower()} model. Proceed from scratch? (Y/N): ")
+                        if user_input.lower() == "y" or user_input.lower() == "yes":
+                            return None
+                        else:
+                            logging.critical(f"Aborting...")
+                            raise IndexError(e)
 
         logging.info(f"Loading {self.args.name} checkpoint {path} ...")
 
-        states = torch.load(path)
+        try:
+            states = torch.load(path)
+        except RuntimeError:
+            states = torch.load(path, map_location="cpu")
         self.model.load_state_dict(states["model_state_dict"])
-        self.optimiser.load_state_dict(states["optimiser_state_dict"])
-        self.lr_scheduler = states["lr_scheduler"]
-        self.epoch = states["epoch"]
-        self.steps = states["step"]
+        if not model_only:
+            self.optimiser.load_state_dict(states["optimiser_state_dict"])
+            self.lr_scheduler = states["lr_scheduler"]
+            self.epoch = states["epoch"]
+            self.steps = states["step"]
 
         logging.info(f"{self.args.name.lower().capitalize()} checkpoint successfully loaded.")
         return None
+    
+    def checkpoint_path(self) -> str:
+        # Initialise checkpoint path as None (find latest model)
+        ckpt = None
 
-    def save_figure(self, x: torch.Tensor, mode: str, fig_type: str) -> None:
+        # Try to find checkpoint file if it's passed as a step integer
+        if self.args.model.checkpoint is not None:
+            try:
+                ckpt_no = int(self.args.model.checkpoint)
+                try:
+                    ckpt_file = [f for f in os.listdir(self.args.ckpt_path) if fnmatch.fnmatch(f, f"*_step_{ckpt_no}*")][0]
+                    ckpt = os.path.join(self.args.ckpt_path, ckpt_file)
+                except IndexError:
+                    logging.critical(f"Tried to load step {ckpt_no} from {self.args.ckpt_path} but found no file. Loading latest model...")
+            except ValueError:
+                ckpt = self.args.model.checkpoint
+        return ckpt
+    
+    def resume_training(self) -> None:
+        # Load the checkpoint
+        ckpt = self.checkpoint_path()
+        self.load_checkpoint(ckpt)
 
-        file_name = f"{self.args.name.lower()}_{mode}_{fig_type}_epoch_{self.epoch}_step_{self.steps}.png"
-        if fig_type == "recon" or fig_type == "input":
-            path = os.path.join(self.args.recon_path, file_name)
-        elif fig_type == "sample":
-            path = os.path.join(self.args.samples_path, file_name)
+        # Prevent running train if it's complete
+        if self.epoch >= self.args.training.n_epochs:
+            logging.info(f"{self.args.name.lower().capitalize()} training already completed with {self.epoch} epochs")
+            self.completed = True
+
+        # Resume training at beginning of current epoch
+        self.steps = int((self.epoch - 1) * len(self.train_loader)) + 1
+
+        # Store the initial steps (used for progression logs)
+        self.init_steps = self.steps
+        self.n_steps = self.get_total_round_steps()
+        return None
+
+    def save_figure(self, x: torch.Tensor, mode: str, fig_type: str, save_tensor: Optional[bool] = False) -> None:
+        assert mode in ["training", "validation", "sampling", ""]
+        assert fig_type in ["input", "recon", "sample", ""]
+
+        if self.args.sampling.sampling_only:
+            file_name = f"{self.args.name.lower()}_{mode}_{fig_type}_batch_{self.steps}.png"
+            path = os.path.join(self.run_args.samples_folder, file_name)
+
         else:
-            path = os.path.join(self.args.log_path, file_name)
+            file_name = f"{self.args.name.lower()}_{mode}_{fig_type}_epoch_{self.epoch}_step_{self.steps}.png"
+            if fig_type == "recon" or fig_type == "input":
+                path = os.path.join(self.args.recon_path, file_name)
+            elif fig_type == "sample":
+                path = os.path.join(self.args.samples_path, file_name)
+            else:
+                path = os.path.join(self.args.log_path, file_name)
             
         fig = visualise_samples(x, scale=True)
         plt.savefig(path)
         plt.close(fig)
         logging.info(f"Saved {self.args.name} {mode} {fig_type} figure in {path}")
+
+        if save_tensor:
+            path = path[:-3] + "pt"
+            torch.save(x, path)
+            logging.info(f"Saved {self.args.name} {mode} {fig_type} tensor in {path}")
         return None
 
     def get_total_round_steps(self) -> int:
-        return int((self.args.training.n_epochs) * len(self.train_loader)) - self.init_steps
+        if self.args.sampling.sampling_only:
+            assert (self.sample_loader is not None)
+            return len(self.sample_loader)
+        else:
+            return int((self.args.training.n_epochs) * len(self.train_loader)) - self.init_steps
 
     def progress(self) -> float:
         return (self.steps - self.init_steps) / self.n_steps
@@ -153,39 +219,9 @@ class BaseTrainer(ABC):
         except (RuntimeWarning, ZeroDivisionError, OverflowError, ValueError):
             return ""
 
-    def resume_training(self) -> None:
-        # Initialise checkpoint path as None (find latest model)
-        ckpt = None
-
-        # Try to find checkpoint file if it's passed as a step integer
-        if self.run_args.checkpoint:
-            try:
-                ckpt_no = int(self.run_args.checkpoint)
-                try:
-                    ckpt_file = [f for f in os.listdir(self.args.ckpt_path) if fnmatch.fnmatch(f, f"*_step_{ckpt_no}*")][0]
-                    ckpt = os.path.join(self.args.ckpt_path, ckpt_file)
-                except IndexError:
-                    logging.warning("Tried to load step {ckpt_no} from {ckpt_path} but found no file. Loading latest model...")
-            except ValueError:
-                ckpt = self.run_args.checkpoint
-
-        # Load the checkpoint
-        self.load_checkpoint(ckpt)
-
-        # Prevent running train if it's complete
-        if self.epoch >= self.args.training.n_epochs:
-            logging.info(f"{self.args.name.lower().capitalize()} training already completed with {self.epoch} epochs")
-            self.completed = True
-
-        # Resume training at beginning of current epoch
-        self.steps = int((self.epoch - 1) * len(self.train_loader)) + 1
-
-        # Store the initial steps (used for progression logs)
-        self.init_steps = self.steps
-        self.n_steps = self.get_total_round_steps()
-        return None
-
     def train(self) -> None:
+        assert (not self.args.sampling.sampling_only), " Sampling only flags cannot be passed for training experiment. "
+
         start_time = time.time()
 
         # Prepare iterator for validation
@@ -268,9 +304,16 @@ class BaseTrainer(ABC):
                         # gpu_diagnostics()
 
                         # Save a sample batch fig
-                        if not self.args.sampling.sampling_only and self.args.sampling.freq > 0 and self.steps % self.args.sampling.freq == 0:
+                        if self.args.sampling.freq > 0 and self.steps % self.args.sampling.freq == 0:
                             try:
-                                sample = self.sample(n_samples=self.args.sampling.batch_size)
+                                sample = self.sample_step(
+                                    torch.randn((
+                                    self.args.sampling.batch_size,
+                                    input.shape[1],
+                                    input.shape[2],
+                                    input.shape[3]
+                                    ))
+                                )
                                 # gpu_diagnostics()
                                 self.save_figure(sample, "training", "sample")
                                 if logger:
@@ -279,7 +322,6 @@ class BaseTrainer(ABC):
                                         fig=visualise_samples(sample, scale=True),
                                         step=self.steps
                                     )
-                                sample = sample.to("cpu")
                             except NotImplementedError:
                                 pass
 
@@ -373,5 +415,20 @@ class BaseTrainer(ABC):
                 total_loss += loss * input.shape[0]
             avg_loss = total_loss / len(self.valid_loader.dataset)
             logging.info(f"{self.args.name.lower().capitalize()} Average validation loss: {avg_loss.item()}")
+        return None
+
+    @torch.no_grad()
+    def sample(self) -> None:
+        start_time = time.time()
+        if self.sample_loader:
+            for i, (input, _) in enumerate(self.sample_loader):
+                input = input.float().to(self.device)
+                sample = self.sample_step(input)
+                self.save_figure(sample, "", "sample", save_tensor=True)
+
+                logging.info(f"{self.args.name.lower().capitalize()} Sampling batch {self.steps} / {len(self.sample_loader)} concluded. {self.eta(start_time)}")
+
+                if self.args.sampling.sampling_only:
+                    self.steps += 1
         return None
 

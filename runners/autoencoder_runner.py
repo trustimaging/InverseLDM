@@ -1,13 +1,13 @@
 import torch
 import torch.nn as nn
 
-from . import BaseTrainer
+from . import BaseRunner
 from models.utils import (_instance_autoencoder_model, _instance_optimiser,
                           _instance_autoencoder_loss_fn, _instance_lr_scheduler,
                           data_parallel_wrapper)
 
 
-class AutoencoderTrainer(BaseTrainer):
+class AutoencoderRunner(BaseRunner):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -16,9 +16,12 @@ class AutoencoderTrainer(BaseTrainer):
                                            device=self.device,
                                            device_ids=self.gpu_ids)
 
-        self.optimiser = _instance_optimiser(self.args, self.model)
-        self.lr_scheduler = _instance_lr_scheduler(self.args, self.optimiser)
-        self.loss_fn = _instance_autoencoder_loss_fn(self.args)
+        # If not in sampling only mode, instantiate optimising objects
+        if not self.args.sampling.sampling_only: 
+            assert (self.train_loader is not None), " Train data loader is required in training mode, but got None"
+            self.optimiser = _instance_optimiser(self.args, self.model)
+            self.lr_scheduler = _instance_lr_scheduler(self.args, self.optimiser)
+            self.loss_fn = _instance_autoencoder_loss_fn(self.args)
 
     def train_step(self, input, **kwargs):
         # Forward pass: recon and the statistical posterior
@@ -68,13 +71,24 @@ class AutoencoderTrainer(BaseTrainer):
         }
         return output
     
-    def sample(self, n_samples=None, **kwargs):
+    # def sample(self, n_samples=None, **kwargs):
+    #      # One autoencoder forward pass to get shape of latent space -- can be optimised!
+    #     ch, h, w = self.train_loader.dataset.dataset[0][0].shape
+    #     _, _ = self.model.module.model.encode(torch.randn(n_samples, ch, h, w,
+    #                                                    device=self.model.module.device))
+    #     z = self.model.module.model.sample()
+        
+    #     # Sample N(0, I) in latent space and decode
+    #     sample = self.model.module.model.decode(torch.randn_like(z))
+    #     return sample
+    
+    def sample_step(self, input, **kwargs):
          # One autoencoder forward pass to get shape of latent space -- can be optimised!
-        ch, h, w = self.train_loader.dataset.dataset[0][0].shape
-        _, _ = self.model.module.model.encode(torch.randn(n_samples, ch, h, w,
-                                                       device=self.model.module.device))
+        _, _ = self.model.module.model.encode(input)
         z = self.model.module.model.sample()
+        
         # Sample N(0, I) in latent space and decode
         sample = self.model.module.model.decode(torch.randn_like(z))
-        return sample
+        return sample    
+
 

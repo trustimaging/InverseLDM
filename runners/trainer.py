@@ -1,7 +1,7 @@
 import logging
 
-from .autoencoder_trainer import AutoencoderTrainer
-from .diffusion_trainer import DiffusionTrainer
+from .autoencoder_runner import AutoencoderRunner
+from .diffusion_runner import DiffusionRunner
 
 from seismic.utils import _instance_conditioner
 from datasets.utils import (_instance_dataset, _instance_dataloader,
@@ -42,7 +42,7 @@ class Trainer():
             self.data_conditioner.process()
 
         # Model trainers
-        self.autoencoder = AutoencoderTrainer(
+        self.autoencoder = AutoencoderRunner(
             args=args.autoencoder,
             args_run=args.run,
             args_logging=args.logging,
@@ -50,7 +50,7 @@ class Trainer():
             valid_loader=self.autoencoder_valid_dataloader,
         )
 
-        self.diffusion = DiffusionTrainer(
+        self.diffusion = DiffusionRunner(
             autoencoder=self.autoencoder.model.module.model,
             args=args.diffusion,
             args_run=args.run,
@@ -65,3 +65,4 @@ class Trainer():
         self.autoencoder.train()
         logging.info(" ---- Diffusion Training ---- ")
         self.diffusion.train()
+        logging.info(" ---- Training Concluded without Errors ---- ")

@@ -1,4 +1,4 @@
-from .base_trainer import *
-from .autoencoder_trainer import *
-from .diffusion_trainer import *
+from .base_runner import *
+from .autoencoder_runner import *
+from .diffusion_runner import *
 from .trainer import *
