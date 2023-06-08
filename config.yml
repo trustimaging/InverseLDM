@@ -3,7 +3,7 @@ data:
     data_path: /home/dp4018/data/ultrasound-data/Ultrasound-MRI-sagittal/
     mode: mri
     maxsamples: null
-    image_size: 128
+    image_size: 256
     scale: [-1, 1]
     clip_outliers: outer
     to_tensor: false
@@ -26,16 +26,17 @@ autoencoder:
         dropout: 0.0
         recon_loss: l2
         div_loss: kl
-        perceptual_loss: null
+        perceptual_loss: wiener
+        checkpoint: 50
 
     params:
         div_weight: 0.00001
-        perceptual_weight: 1.
+        perceptual_weight: 0.01
         recon_weight: 1.
         
     training:
-        batch_size: 4
-        n_epochs: 300
+        batch_size: 8
+        n_epochs: 250
         save_recon_freq: 500 
         ckpt_freq: 100
         ckpt_last_only: true
@@ -43,15 +44,16 @@ autoencoder:
 
     validation:
         split: 0.1
-        batch_size: 4
+        batch_size: 8
         freq: 50
         save_recon_freq: 500
         num_workers: 4
 
     sampling:
         sampling_only: false
-        batch_size: 4
+        batch_size: 8
         freq: 500
+        n_samples: 1
 
     optim:
         weight_decay: 0.000
@@ -79,12 +81,12 @@ diffusion:
         beta_schedule: linear
         beta_start: 0.0001
         beta_end: 0.02
-        num_diffusion_timesteps: 500
+        num_diffusion_timesteps: 1000
         latent_scaling_factor: 1.
         sampler : ddpm
 
     training:
-        batch_size: 4
+        batch_size: 8
         n_epochs: 300
         ckpt_freq: 100
         ckpt_last_only: true
@@ -92,14 +94,16 @@ diffusion:
 
     validation:
         split: 0.1
-        batch_size: 4
+        batch_size: 8
         freq: 50
         num_workers: 4
+        
     sampling:
         sampling_only: false
-        batch_size: 4
+        batch_size: 8
         freq: 500
         output: last_only
+        n_samples: 100
 
     optim:
         weight_decay: 0.000

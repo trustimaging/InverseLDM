@@ -1,5 +1,5 @@
 data:
-    image_size: null
+    image_size: 128
     channels: 1
     scale: [0, 1]
     clip_outliers: false
@@ -23,6 +23,7 @@ autoencoder:
         recon_loss: l2
         div_loss: kl
         perceptual_loss: null
+        checkpoint: null
 
     params:
         div_weight: 0.001
@@ -48,6 +49,8 @@ autoencoder:
         sampling_only: false
         batch_size: 32
         freq: 100
+        n_samples: 1
+        num_workers: 32
 
     optim:
         weight_decay: 0.000
@@ -70,6 +73,7 @@ diffusion:
         dropout: 0.0
         ema_rate: 0.999
         loss: l2
+        checkpoint: null
 
     params:
         beta_schedule: linear
@@ -97,8 +101,10 @@ diffusion:
     sampling:
         sampling_only: false
         batch_size: 32
+        num_workers: 32
         freq: 100
         output: last_only
+        n_samples: 100
 
     optim:
         weight_decay: 0.000
