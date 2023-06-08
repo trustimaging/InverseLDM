@@ -11,10 +11,6 @@ class BaseDataset(Dataset):
         self.args = args
         self.transform = self._get_transform()
 
-    @staticmethod
-    def modify_commandline_options(parser, is_train):
-        raise NotImplementedError
-
     @abstractmethod
     def __len__(self):
         raise NotImplementedError
@@ -26,7 +22,7 @@ class BaseDataset(Dataset):
     def _get_transform(self):
         transform_list = []
         if self.args.image_size:
-            transform_list.append(Resize(self.args.image_size))
+            transform_list.append(Resize(self.args.image_size, antialias=True))
         if self.args.to_tensor:
             transform_list.append(ToTensor())
         if self.args.clip_outliers:
