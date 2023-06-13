@@ -39,6 +39,10 @@ def setup_train():
     # set up loggers
     setup_logger(args)
 
+    # for training, we must make sure the sampling_only flags are off
+    args.autoencoder.sampling.sampling_only = False
+    args.diffusion.sampling.sampling_only = False
+
     # save updated args as config in log folder
     with open(os.path.join(args.run.log_folder, "config.yml"), "w") as f:
         yaml.dump(args, f, default_flow_style=False)
@@ -65,9 +69,6 @@ def setup_sampling():
 
     # check devices
     check_devices(args)
-
-    # checking tracking tool
-    check_tracking_tool(args)
 
     # create relevant folders
     create_sampling_experiment_folders(args)
@@ -159,12 +160,12 @@ def parse_args():
         default=42,
         help="Random seed for reproducibility"
     )
-    parser.add_argument(
-        "--use_pretrained",
-        action="store_true",
-        help="Whether to load a pretrained model training. Used in conjunction\
-            with checkpoint flag. If checkpoint not specified, will use latest model."
-    )
+    # parser.add_argument(
+    #     "--use_pretrained",
+    #     action="store_true",
+    #     help="Whether to load a pretrained model training. Used in conjunction\
+    #         with checkpoint flag. If checkpoint not specified, will use latest model."
+    # )
     # parser.add_argument(
     #     "--autoencoder_checkpoint",
     #     default="",
