@@ -56,7 +56,7 @@ class DiffusionWrapper(nn.Module):
             image_channels=autoencoder.emb_channels,
             n_channels=args.model.ch,
             ch_mults=args.model.ch_mult,
-            is_attn=(False, False, True, True),
+            is_attn=args.model.attention,
             n_blocks=args.model.num_res_blocks
         ).to(device)
 
