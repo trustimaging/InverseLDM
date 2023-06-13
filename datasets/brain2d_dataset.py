@@ -3,8 +3,6 @@ import gzip
 import numpy as np
 import torch
 from . import BaseDataset
-
-
 class Brain2DDataset(BaseDataset):
     def __init__(self, args):
         BaseDataset.__init__(self, args)
@@ -41,6 +39,7 @@ class Brain2DDataset(BaseDataset):
                    filename.lower().endswith(suffix):
                     self.data_paths.append(os.path.join(subdir, filename))
         self.data_paths = self.data_paths[:maxsamples]
+        assert len(self.data_paths) > 0, " Found no data samples to load"
         return None
 
     def __getitem__(self, index):
