@@ -106,7 +106,8 @@ class BaseRunner(ABC):
                     if self.run_args.y:
                         return None
                     else:
-                        user_input = input(f"Could not find latest {self.args.name.lower()} model. Proceed from scratch? (Y/N): ")
+                        logging.critical(f"Could not find latest {self.args.name.lower()} model.")
+                        user_input = input("\tProceed from scratch? (Y/N): ")
                         if user_input.lower() == "y" or user_input.lower() == "yes":
                             return None
                         else:
@@ -194,8 +195,10 @@ class BaseRunner(ABC):
 
     def get_total_round_steps(self) -> int:
         if self.args.sampling.sampling_only:
-            assert (self.sample_loader is not None)
-            return len(self.sample_loader)
+            if self.sample_loader is not None:
+                return len(self.sample_loader)
+            else:
+                return -1
         else:
             return int((self.args.training.n_epochs) * len(self.train_loader)) - self.init_steps
 
@@ -249,6 +252,7 @@ class BaseRunner(ABC):
             try:
                 for epoch in range(start_epoch, self.args.training.n_epochs + 1):
                     for i, (input, condition) in enumerate(self.train_loader):
+
                         # Send batch to device
                         input = input.float().to(self.device)
 
@@ -312,7 +316,7 @@ class BaseRunner(ABC):
                                     input.shape[1],
                                     input.shape[2],
                                     input.shape[3]
-                                    ))
+                                    ), device=self.device)
                                 )
                                 # gpu_diagnostics()
                                 self.save_figure(sample, "training", "sample")
