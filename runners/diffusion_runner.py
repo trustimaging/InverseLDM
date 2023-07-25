@@ -11,8 +11,6 @@ from models.utils import (_instance_diffusion_model, _instance_optimiser,
 class DiffusionRunner(BaseRunner):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        
-        self.data_conditioner = kwargs.pop("data_conditioner", None)
 
         autoencoder = kwargs.pop("autoencoder").eval()
         self.model = _instance_diffusion_model(autoencoder,
@@ -26,13 +24,28 @@ class DiffusionRunner(BaseRunner):
         self.lr_scheduler = _instance_lr_scheduler(self.args, self.optimiser)
         self.loss_fn = _instance_diffusion_loss_fn(self.args)
 
+        if self.args.sampling_only:
+            self.temperature = self.args.sampling.temperature
+            self.skip_steps = self.args.sampling.skip_steps
+        else:
+            self.temperature = self.args.training.sampling_temperature
+            self.skip_steps = self.args.training.sampling_skip_steps
+
+        print(self.temperature, self.skip_steps)
+
     def train_step(self, input, **kwargs):
+        # Dictionary of outputs
+        output = {}
+
+        # Get condition from kwargs
+        cond = kwargs.pop("condition", None)
+
         # Forward pass: predict model noise based on condition
-        noise, noise_pred = self.model(input)
+        noise, noise_pred = self.model(input, cond)
 
         # Compute training loss
         loss = self.loss_fn(noise, noise_pred)
-
+        
         # Zero grad and back propagation
         self.optimiser.zero_grad()
         loss.backward()
@@ -49,15 +62,18 @@ class DiffusionRunner(BaseRunner):
         if self.lr_scheduler:
             self.lr_scheduler.step()
 
-        # Output dictionary
-        output = {
+        # Output dictionary update
+        output.update({
             "loss": loss,
-        }
+        })
         return output
 
     def valid_step(self, input, **kwargs):
+        # Get condition from kwargs
+        cond = kwargs.pop("condition", None)
+
         # Forward pass: predict model noise based on condition
-        noise, noise_pred = self.model(input)
+        noise, noise_pred = self.model(input, cond)
 
         # Compute validation loss
         loss = self.loss_fn(noise, noise_pred)
@@ -67,27 +83,23 @@ class DiffusionRunner(BaseRunner):
             "loss": loss,
         }
         return output
-    
-    # @torch.no_grad()
-    # def sample(self, n_samples=None, **kwargs):
-    #     # One autoencoder forward pass to get shape of latent space -- can be optimised!
-    #     ch, h, w = self.train_loader.dataset.dataset[0][0].shape
-    #     z = self.model.module.ldm.autoencoder_encode(torch.randn(n_samples, ch, h, w,
-    #                                                       device=self.model.module.device))
-
-    #     # Sample latent space with diffusion model and decode to reconstruct image
-    #     z_sample = self.model.module.sampler.sample(shape=z.shape,
-    #                                                 cond=None)
-    #     sample = self.model.module.ldm.autoencoder_decode(z_sample)
-    #     return sample
 
     @torch.no_grad()
     def sample_step(self, input, **kwargs):
+        # Get sampling parameters from kwargs
+        cond = kwargs.pop("condition", None)
+
         # One autoencoder forward pass to get shape of latent space -- can be optimised!
         z = self.model.module.ldm.autoencoder_encode(input)
 
-        # Sample latent space with diffusion model and decode to reconstruct image
-        z_sample = self.model.module.sampler.sample(shape=z.shape,
-                                                    cond=None)
+        # Sample latent space with diffusion model
+        z_sample = self.model.module.sampler.sample(
+            shape=z.shape,
+            cond=cond,
+            temperature=self.temperature,
+            skip_steps=self.skip_steps
+        )
+
+        # Decode to reconstruct data
         sample = self.model.module.ldm.autoencoder_decode(z_sample)
         return sample
