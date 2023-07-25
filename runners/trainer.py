@@ -33,14 +33,6 @@ class Trainer():
             self.args.diffusion.validation, self.diffusion_valid_dataset
         )
 
-        # Data conditioning
-        try:
-            self.data_conditioner = _instance_conditioner(args.seismic)
-        except KeyError:
-            self.data_conditioner = None
-        if self.data_conditioner:
-            self.data_conditioner.process()
-
         # Model trainers
         self.autoencoder = AutoencoderRunner(
             args=args.autoencoder,
@@ -55,7 +47,6 @@ class Trainer():
             args=args.diffusion,
             args_run=args.run,
             args_logging=args.logging,
-            data_conditioner=self.data_conditioner,
             train_loader=self.diffusion_train_dataloader,
             valid_loader=self.diffusion_valid_dataloader,
         )

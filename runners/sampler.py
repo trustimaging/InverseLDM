@@ -25,7 +25,7 @@ class Sampler():
                                     self.args.data.image_size,
                                     self.args.data.image_size))
         )
-        
+
         # Dataloaders
         self.autoencoder_sample_dataloader = _instance_dataloader(
             self.args.autoencoder.sampling, self.autoencoder_sampling_dataset
@@ -34,16 +34,8 @@ class Sampler():
             self.args.diffusion.sampling, self.diffusion_sampling_dataset
         )
 
-        # Data conditioning
-        try:
-            self.data_conditioner = _instance_conditioner(args.seismic)
-        except KeyError:
-            self.data_conditioner = None
-        if self.data_conditioner:
-            self.data_conditioner.process()
-
         # Autoencoder runner, load pre-trained, eval mode
-        assert args.autoencoder.sampling.sampling_only
+        assert args.autoencoder.sampling_only
         self.autoencoder = AutoencoderRunner(
             args=args.autoencoder,
             args_run=args.run,
@@ -57,13 +49,12 @@ class Sampler():
         self.autoencoder.model.module.model.eval()
 
         # Diffusion runner, load pre-trained, eval mode
-        assert args.diffusion.sampling.sampling_only
+        assert args.diffusion.sampling_only
         self.diffusion = DiffusionRunner(
             autoencoder=self.autoencoder.model.module.model,
             args=args.diffusion,
             args_run=args.run,
             args_logging=args.logging,
-            data_conditioner=self.data_conditioner,
             sample_loader=self.diffusion_sample_dataloader
         )
         self.diffusion.load_checkpoint(
