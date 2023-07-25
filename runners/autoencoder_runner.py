@@ -17,7 +17,7 @@ class AutoencoderRunner(BaseRunner):
                                            device_ids=self.gpu_ids)
 
         # If not in sampling only mode, instantiate optimising objects
-        if not self.args.sampling.sampling_only: 
+        if not self.args.sampling_only: 
             assert (self.train_loader is not None), " Train data loader is required in training mode, but got None"
             self.optimiser = _instance_optimiser(self.args, self.model)
             self.lr_scheduler = _instance_lr_scheduler(self.args, self.optimiser)
@@ -70,17 +70,6 @@ class AutoencoderRunner(BaseRunner):
             "log_var": log_var
         }
         return output
-    
-    # def sample(self, n_samples=None, **kwargs):
-    #      # One autoencoder forward pass to get shape of latent space -- can be optimised!
-    #     ch, h, w = self.train_loader.dataset.dataset[0][0].shape
-    #     _, _ = self.model.module.model.encode(torch.randn(n_samples, ch, h, w,
-    #                                                    device=self.model.module.device))
-    #     z = self.model.module.model.sample()
-        
-    #     # Sample N(0, I) in latent space and decode
-    #     sample = self.model.module.model.decode(torch.randn_like(z))
-    #     return sample
     
     def sample_step(self, input, **kwargs):
          # One autoencoder forward pass to get shape of latent space -- can be optimised!

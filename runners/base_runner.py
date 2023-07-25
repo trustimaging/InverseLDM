@@ -55,15 +55,10 @@ class BaseRunner(ABC):
     def valid_step(self, input: torch.Tensor, **kwargs) -> dict:
         """ Function performs one batch validation step. Input is a batch for validating """
         return NotImplementedError
-    
-    # @torch.no_grad()
-    # def sample(self, n_samples=None, **kwargs) -> dict:
-    #     """ Function performs sampling of self.model. n_samples is the number of samples to generate"""
-    #     return NotImplementedError
 
     @torch.no_grad()
     def sample_step(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
-        """ Function performs sampling of self.model. n_samples is the number of samples to generate"""
+        """ Function performs sampling of self.model."""
         return NotImplementedError
 
     def _update_hparam_dict(self) -> dict:
@@ -93,13 +88,13 @@ class BaseRunner(ABC):
         logging.info(f"Saved {self.args.name.lower()} checkpoint {path}")
         return None
 
-    def load_checkpoint(self, path: str = "", model_only: Optional[bool] = False) -> None:
+    def load_checkpoint(self, path: Optional[str] = "", model_only: Optional[bool] = False) -> None:
         if not path:
             try:
                 latest_ckpt_name = [f for f in os.listdir(self.args.ckpt_path) if fnmatch.fnmatch(f, "*latest*")][0]
                 path = os.path.join(self.args.ckpt_path, latest_ckpt_name)
             except IndexError as e:
-                if self.args.sampling.sampling_only:
+                if self.args.sampling_only:
                     logging.critical(f"Could not find latest {self.args.name.lower()} model. Please specify checkpoint path to load.")
                     raise IndexError(e)
                 else:
@@ -120,7 +115,9 @@ class BaseRunner(ABC):
             states = torch.load(path)
         except RuntimeError:
             states = torch.load(path, map_location="cpu")
+        
         self.model.load_state_dict(states["model_state_dict"])
+        
         if not model_only:
             self.optimiser.load_state_dict(states["optimiser_state_dict"])
             self.lr_scheduler = states["lr_scheduler"]
@@ -130,7 +127,7 @@ class BaseRunner(ABC):
         logging.info(f"{self.args.name.lower().capitalize()} checkpoint successfully loaded.")
         return None
     
-    def checkpoint_path(self) -> str:
+    def get_checkpoint_path(self) -> str:
         # Initialise checkpoint path as None (find latest model)
         ckpt = None
 
@@ -149,7 +146,7 @@ class BaseRunner(ABC):
     
     def resume_training(self) -> None:
         # Load the checkpoint
-        ckpt = self.checkpoint_path()
+        ckpt = self.get_checkpoint_path()
         self.load_checkpoint(ckpt)
 
         # Prevent running train if it's complete
@@ -165,24 +162,24 @@ class BaseRunner(ABC):
         self.n_steps = self.get_total_round_steps()
         return None
 
-    def save_figure(self, x: torch.Tensor, mode: str, fig_type: str, save_tensor: Optional[bool] = False) -> None:
+    def save_figure(self, x: torch.Tensor, mode: str, fig_type: str, save_tensor: Optional[bool] = False
+                    , scale: Optional[bool] = True) -> None:
         assert mode in ["training", "validation", "sampling", ""]
-        assert fig_type in ["input", "recon", "sample", ""]
 
-        if self.args.sampling.sampling_only:
+        if self.args.sampling_only:
             file_name = f"{self.args.name.lower()}_{mode}_{fig_type}_batch_{self.steps}.png"
             path = os.path.join(self.run_args.samples_folder, file_name)
 
         else:
             file_name = f"{self.args.name.lower()}_{mode}_{fig_type}_epoch_{self.epoch}_step_{self.steps}.png"
-            if fig_type == "recon" or fig_type == "input":
+            if fig_type in ["recon", "input"]:
                 path = os.path.join(self.args.recon_path, file_name)
-            elif fig_type == "sample":
+            elif fig_type in ["sample", "sample_input", "sample_recon"]:
                 path = os.path.join(self.args.samples_path, file_name)
             else:
                 path = os.path.join(self.args.log_path, file_name)
             
-        fig = visualise_samples(x, scale=True)
+        fig = visualise_samples(x, scale=scale)
         plt.savefig(path)
         plt.close(fig)
         logging.info(f"Saved {self.args.name} {mode} {fig_type} figure in {path}")
@@ -194,7 +191,7 @@ class BaseRunner(ABC):
         return None
 
     def get_total_round_steps(self) -> int:
-        if self.args.sampling.sampling_only:
+        if self.args.sampling_only:
             if self.sample_loader is not None:
                 return len(self.sample_loader)
             else:
@@ -223,7 +220,7 @@ class BaseRunner(ABC):
             return ""
 
     def train(self) -> None:
-        assert (not self.args.sampling.sampling_only), " Sampling only flags cannot be passed for training experiment. "
+        assert (not self.args.sampling_only), " Sampling only flags cannot be passed for training experiment. "
 
         start_time = time.time()
 
@@ -234,7 +231,7 @@ class BaseRunner(ABC):
             valid_iterator = None
 
         # Adjust start epoch, load checkpoint
-        if self.run_args.resume_training:
+        if self.run_args.resume_training or self.args.model.checkpoint:
             self.resume_training()
         start_epoch = self.epoch
 
@@ -247,14 +244,19 @@ class BaseRunner(ABC):
         # Training mode
         self.model.train()
 
-        # Loop through batch and perform training and validation steps
+        # Loop through batch and perform training, validation and sampling steps
         if not self.completed:
             try:
                 for epoch in range(start_epoch, self.args.training.n_epochs + 1):
-                    for i, (input, condition) in enumerate(self.train_loader):
+                    for i, batch in enumerate(self.train_loader):
 
-                        # Send batch to device
-                        input = input.float().to(self.device)
+                        # Unpack batch into input and condition (if returned) and send to device
+                        if isinstance(batch, list):
+                            input, condition = batch
+                            input, condition = input.float().to(self.device), condition.float().to(self.device)
+                        else:
+                            input, condition = batch, None
+                            input = input.float().to(self.device)
 
                         # Train batch
                         output = self.train_step(input, condition=condition)
@@ -284,8 +286,8 @@ class BaseRunner(ABC):
                                 )
 
                         # Save training recon fig
-                        if self.args.training.save_recon_freq > 0 and self.steps % self.args.training.save_recon_freq == 0:
-                            try:
+                        try:
+                            if self.args.training.save_recon_freq > 0 and self.steps % self.args.training.save_recon_freq == 0:
                                 recon = output["recon"]
                                 self.save_figure(input, "training", "input")
                                 self.save_figure(recon, "training", "recon")
@@ -300,47 +302,88 @@ class BaseRunner(ABC):
                                         fig=visualise_samples(recon, scale=True),
                                         step=self.steps
                                     )
-                            except KeyError:
-                                pass
-
+                        except (KeyError, AttributeError):
+                            pass
 
                         # Memory diagnostics:
                         # gpu_diagnostics()
 
-                        # Save a sample batch fig
-                        if self.args.sampling.freq > 0 and self.steps % self.args.sampling.freq == 0:
+                        # Sample and save training figure
+                        if self.args.training.sampling_freq > 0 and self.steps % self.args.training.sampling_freq == 0:
                             try:
                                 sample = self.sample_step(
-                                    torch.randn((
-                                    self.args.sampling.batch_size,
-                                    input.shape[1],
-                                    input.shape[2],
-                                    input.shape[3]
-                                    ), device=self.device)
+                                    torch.randn_like(input),
+                                    condition = condition,
                                 )
-                                # gpu_diagnostics()
-                                self.save_figure(sample, "training", "sample")
-                                if logger:
-                                    logger.log_figure(
-                                        tag=f"{self.args.name.lower()}_training_sample",
-                                        fig=visualise_samples(sample, scale=True),
-                                        step=self.steps
-                                    )
+
+                                # If condition is None, sample is a randomly generated model from the learned distribution.
+                                # Since autoencoder is not conditioned, save sample as if condition is None.
+                                if condition is None or self.args.name == "autoencoder":
+                                    self.save_figure(sample, "training", "sample")
+
+                                    if logger:
+                                        logger.log_figure(
+                                            tag=f"{self.args.name.lower()}_training_sample",
+                                            fig=visualise_samples(sample, scale=True),
+                                            step=self.steps
+                                        )
+                                # If condition is passed, we want to compare the conditionally sampled model to the input
+                                else:
+                                    self.save_figure(input, "training", "sample_input")
+                                    self.save_figure(sample, "training", "sample_recon")
+
+                                    if logger:
+                                        logger.log_figure(
+                                            tag=f"{self.args.name.lower()}_training_sample_input",
+                                            fig=visualise_samples(input, scale=True),
+                                            step=self.steps
+                                        )
+                                        logger.log_figure(
+                                            tag=f"{self.args.name.lower()}_training_sample_recon",
+                                            fig=visualise_samples(sample, scale=True),
+                                            step=self.steps
+                                        )
+
                             except NotImplementedError:
                                 pass
 
 
                         # Validate batch
                         if valid_iterator:
-                            if (self.args.validation.freq > 0 and self.steps%self.args.validation.freq == 0) or \
-                               (self.args.validation.save_recon_freq > 0 and self.steps%self.args.validation.save_recon_freq == 0):
+                            # Check which validation steps to run (validate, save_recon and sampling)
+                            valid_freq = self.args.validation.freq > 0 and self.steps%self.args.validation.freq == 0
+                            try:
+                                valid_save_recon_freq = self.args.validation.save_recon_freq > 0 and self.steps%self.args.validation.save_recon_freq == 0
+                            except AttributeError:
+                                valid_save_recon_freq = False
+                                pass
+                            try:
+                                valid_sampling_frequency = self.args.validation.sampling_freq> 0 and self.steps%self.args.validation.sampling_freq== 0
+                            except AttributeError:
+                                valid_sampling_frequency = False
+
+                            # If any validation step required, validate batch
+                            if valid_freq or valid_save_recon_freq or valid_sampling_frequency:
                                 try:
-                                    val_input, val_condition = next(valid_iterator)
-                                    val_input = val_input.float().to(self.device)
+                                    val_batch = next(valid_iterator)
+
+                                    # Unpack validation batch into input and condition (if returned) and send to device.
+                                    if isinstance(val_batch, list):
+                                        val_input, val_condition = val_batch
+                                        val_input, val_condition = val_input.float().to(self.device), val_condition.float().to(self.device)
+                                    else:
+                                        val_input, val_condition = val_batch, None
+                                        val_input = val_input.float().to(self.device)
+                                
+                                # Restart iterator and get batch
                                 except StopIteration:
-                                    valid_iterator = iter(self.valid_loader)  # restart iterator
-                                    val_input, val_condition = next(valid_iterator)
-                                    val_input = val_input.float().to(self.device)
+                                    valid_iterator = iter(self.valid_loader)  
+                                    if isinstance(val_batch, list):
+                                        val_input, val_condition = val_batch
+                                        val_input, val_condition = val_input.float().to(self.device), val_condition.float().to(self.device)
+                                    else:
+                                        val_input, val_condition = val_batch, None
+                                        val_input = val_input.float().to(self.device)
 
                                 # Validate batch
                                 val_output = self.valid_step(val_input, condition=val_condition)
@@ -364,7 +407,7 @@ class BaseRunner(ABC):
                                     )
 
                                 # Save validation recon figure
-                                if self.args.validation.save_recon_freq > 0 and self.steps%self.args.validation.save_recon_freq == 0:
+                                if valid_save_recon_freq:
                                     try:
                                         val_recon = val_output["recon"]
                                         self.save_figure(val_input, "validation", "input")
@@ -381,6 +424,33 @@ class BaseRunner(ABC):
                                         )
                                     except KeyError:
                                         pass
+
+                                # Sample and save validation if condition is passed
+                                if valid_sampling_frequency and condition is not None and self.args.name != "autoencoder":
+                                    try:
+                                        val_sample = self.sample_step(
+                                            torch.randn_like(val_input),
+                                            condition = val_condition,
+                                        )
+                                        
+                                        self.save_figure(val_input, "validation", "sample_input")
+                                        self.save_figure(val_sample, "validation", "sample_recon")
+
+                                        if logger:
+                                            logger.log_figure(
+                                                tag=f"{self.args.name.lower()}_valid_sample_input",
+                                                fig=visualise_samples(val_input, scale=True),
+                                                step=self.steps
+                                            )
+                                            logger.log_figure(
+                                                tag=f"{self.args.name.lower()}_valid_sample_recon",
+                                                fig=visualise_samples(val_sample, scale=True),
+                                                step=self.steps
+                                            )
+
+                                    except NotImplementedError:
+                                        pass
+
                                 # Memory diagnostics
                                 # gpu_diagnostics()
 
@@ -408,15 +478,25 @@ class BaseRunner(ABC):
     def validate(self) -> None:
         if self.valid_loader:
             total_loss = 0.
-            for i, (input, _) in enumerate(self.valid_loader):
-                input = input.float().to(self.device)
-                output = self.valid_step(input)
+            for i, batch in enumerate(self.valid_loader):
+                # Unpack batch into input and condition (if returned) and send to device
+                if isinstance(batch, list):
+                    input, condition = batch
+                    input, condition = input.float().to(self.device), condition.float().to(self.device)
+                else:
+                    input, condition = batch, None
+                    input = input.float().to(self.device)
+
+                 # Validation step   
+                output = self.valid_step(input, condition=condition)
                 try:
                     loss = output["loss"]
                 except KeyError as e:
                     logging.critical("Validation step output must be a dictionary containing the key 'loss'")
                     raise KeyError(e)
                 total_loss += loss * input.shape[0]
+
+            # Average validation losses
             avg_loss = total_loss / len(self.valid_loader.dataset)
             logging.info(f"{self.args.name.lower().capitalize()} Average validation loss: {avg_loss.item()}")
         return None
@@ -425,14 +505,21 @@ class BaseRunner(ABC):
     def sample(self) -> None:
         start_time = time.time()
         if self.sample_loader:
-            for i, (input, _) in enumerate(self.sample_loader):
-                input = input.float().to(self.device)
-                sample = self.sample_step(input)
+            for i, sample_batch in enumerate(self.sample_loader):      
+                # Unpack sampling batch into input and condition (if returned) and send to device.          
+                if isinstance(sample_batch, list):
+                    input, condition = sample_batch
+                    input, condition = input.float().to(self.device), condition.float().to(self.device)
+                else:
+                    input, condition = sample_batch, None
+                    input = input.float().to(self.device)
+
+                sample = self.sample_step(input, condition=condition)
                 self.save_figure(sample, "", "sample", save_tensor=True)
 
                 logging.info(f"{self.args.name.lower().capitalize()} Sampling batch {self.steps} / {len(self.sample_loader)} concluded. {self.eta(start_time)}")
 
-                if self.args.sampling.sampling_only:
+                if self.args.sampling_only:
                     self.steps += 1
         return None
 
