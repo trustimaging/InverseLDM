@@ -17,6 +17,9 @@ def dict2namespace(dictionary: dict) -> argparse.Namespace:
 
 def namespace2dict(namespace: argparse.Namespace,
                    flatten: bool = False) -> dict:
+    """
+    Flatten means turning further level namesapces inside 'namespace' into dictoraries
+    """
     dictionary = {}
     for key, val in namespace.__dict__.items():
         if isinstance(val, argparse.Namespace):
