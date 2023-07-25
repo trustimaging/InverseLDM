@@ -71,9 +71,9 @@ def _instance_autoencoder_loss_fn(args):
 
 
 def _instance_diffusion_loss_fn(args):
-    def diffusion_loss_fn(targe_noise: torch.Tensor,
-                          pred_noise: torch.Tensor) -> torch.Tensor:
-        loss = reconstruction(args, targe_noise, pred_noise)
+    def diffusion_loss_fn(target: torch.Tensor,
+                          pred: torch.Tensor) -> torch.Tensor:
+        loss = reconstruction(args, target, pred)
         return loss
     return diffusion_loss_fn
 
