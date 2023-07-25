@@ -177,7 +177,7 @@ class DDIMSampler(DiffusionSampler):
         # Calculate $\tau$ to be uniformly distributed across $[1,2,\dots,T]$
         if ddim_discretize == 'uniform':
             c = self.n_steps // n_steps
-            self.time_steps = np.asarray(list(range(0, self.n_steps, c))) + 1
+            self.time_steps = np.asarray(list(range(0, self.n_steps, c))) #+ 1
         # Calculate $\tau$ to be quadratically distributed across $[1,2,\dots,T]$
         elif ddim_discretize == 'quad':
             self.time_steps = ((np.linspace(0, np.sqrt(self.n_steps * .8), n_steps)) ** 2).astype(int) + 1
@@ -188,11 +188,23 @@ class DDIMSampler(DiffusionSampler):
             # Get ${\color{lightgreen}\bar\alpha_t}$
             alpha_bar = self.model.alpha_bar
 
+            # print(self.time_steps==np.array([i for i in range(1, 1001)]))
+            # print("type(alpha_bar)",type(alpha_bar))
+            # print("type(self.time_steps)",type(self.time_steps), self.time_steps.shape)
+            # print("len(alpha_bar)",len(alpha_bar))
+            # print("self.time_steps[:-1],max(self.time_steps[:-1])",self.time_steps[:-1], max(self.time_steps[:-1]))
+            # print("alpha_bar[0]",alpha_bar[0])
+            # print("alpha_bar[999]",alpha_bar[999])
+            # print("alpha_bar[[i for i in range(1, 1001)]]",alpha_bar[np.array([i for i in range(1, 1001)])])
+            # print("alpha_bar[self.time_steps]",alpha_bar[list(self.time_steps)])
+            # print("alpha_bar[self.time_steps[:-1]]",alpha_bar[self.time_steps[:-1]])
+
             # $\alpha_{\tau_i}$
             self.ddim_alpha = alpha_bar[self.time_steps].clone().to(torch.float32)
             # $\sqrt{\alpha_{\tau_i}}$
             self.ddim_alpha_sqrt = torch.sqrt(self.ddim_alpha)
             # $\alpha_{\tau_{i-1}}$
+            
             self.ddim_alpha_prev = torch.cat([alpha_bar[0:1], alpha_bar[self.time_steps[:-1]]])
 
             # $$\sigma_{\tau_i} =
@@ -359,7 +371,17 @@ class DDIMSampler(DiffusionSampler):
         # Sample from
         #  $$q_{\sigma,\tau}(x_t|x_0) =
         #          \mathcal{N} \Big(x_t; \sqrt{\alpha_{\tau_i}} x_0, (1-\alpha_{\tau_i}) \mathbf{I} \Big)$$
-        return self.ddim_alpha_sqrt[index] * x0 + self.ddim_sqrt_one_minus_alpha[index] * noise
+        # print("alpha_sqrt", len(self.ddim_alpha_sqrt), self.ddim_alpha_sqrt.device)
+        # print("one_minus_alphs", len(self.ddim_sqrt_one_minus_alpha), self.ddim_sqrt_one_minus_alpha.device)
+        # print("index", index)
+        # print("x0", x0.shape)
+        # print("noise", noise.shape)
+
+        self.ddim_alpha_sqrt = self.ddim_alpha_sqrt.to(x0.device)
+        self.ddim_sqrt_one_minus_alpha = self.ddim_sqrt_one_minus_alpha.to(x0.device)
+
+        return self.ddim_alpha_sqrt[index].view(-1, 1, 1, 1).expand_as(x0) * x0 + \
+            self.ddim_sqrt_one_minus_alpha[index].view(-1, 1, 1, 1).expand_as(noise) * noise
 
     @torch.no_grad()
     def paint(self, x: torch.Tensor, cond: torch.Tensor, t_start: int, *,
@@ -506,7 +528,7 @@ class DDPMSampler(DiffusionSampler):
         time_steps = np.flip(self.time_steps)[skip_steps:]
 
         # Sampling loop
-        logging.info("Sampling LDM...")
+        logging.info("Sampling with DDPM ...")
         for step in time_steps:
             # Time step $t$
             ts = x.new_full((bs,), step, dtype=torch.long)
