@@ -1,22 +1,30 @@
 data:
-    image_size: 128
-    channels: 1
+    resize: 128
     scale: [0, 1]
     clip_outliers: false
     to_tensor: true
     normalise: [[0.5], [0.5]]
 
+    condition:
+        mode: null
+        condition_path: null    
+        resize: 128
+        scale: [0, 1]
+        clip_outliers: false
+        to_tensor: true
+        normalise: false
+
 logging:
-    tracking_tool: tensorboard
+    tool: tensorboard
 
 autoencoder:
     model:
         in_channels: 3
         out_channels: 3
-        ch: 64
+        feature_channels: 64
         z_channels : 4
-        emb_channels : 4
-        ch_mult: [1, 2, 4]
+        embbeded_channels : 4
+        channels_mult: [1, 2, 4]
         num_res_blocks: 2
         recon_loss: l2
         div_loss: kl
@@ -35,6 +43,7 @@ autoencoder:
         ckpt_freq: 100
         ckpt_last_only: true
         num_workers: 32
+        sampling_freq: 0
 
     validation:
         split: 0.1
@@ -44,10 +53,8 @@ autoencoder:
         num_workers: 32
 
     sampling:
-        sampling_only: false
         batch_size: 32
-        freq: 100
-        n_samples: 1
+        n_samples: 0
         num_workers: 32
 
     optim:
@@ -64,13 +71,18 @@ autoencoder:
 
 diffusion:
     model:
-        ch: 128
-        ch_mult: [1, 1, 2, 2]
+        feature_channels: 128
+        channels_mult: [1, 1, 2, 2]
         num_res_blocks: 2
         attention: [True, True, False, False]
-        ema_rate: 0.999
+        num_transformer_layers: 1
+        num_attn_heads: 8
         loss: l2
         checkpoint: null
+    
+    condition:
+        in_channels: 1
+        feature_channels: 98
 
     params:
         beta_schedule: linear
@@ -83,7 +95,9 @@ diffusion:
     training:
         batch_size: 32
         n_epochs: 100
-        save_recon_freq: 0 
+        sampling_freq: 50
+        sampling_temperature: 0.5
+        sampling_skip_steps: 0.
         ckpt_freq: 100
         ckpt_last_only: true
         num_workers: 32 
@@ -92,16 +106,16 @@ diffusion:
         split: 0.1
         batch_size: 32
         freq: 10
-        save_recon_freq: 0 
+        sampling_freq: 50
         num_workers: 4
 
     sampling:
-        sampling_only: false
         batch_size: 32
-        num_workers: 32
-        freq: 100
-        output: last_only
+        temperature: 1.
+        skip_steps: 0
         n_samples: 100
+        num_workers: 32
+        output: last_only
 
     optim:
         weight_decay: 0.000
@@ -114,8 +128,3 @@ diffusion:
 
         lr_scheduler:
             scheduler: null
-
-seismic:
-    data_file: null
-    mode: pids
-    save_condition: True

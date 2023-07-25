@@ -1,14 +1,21 @@
 data:
     dataset: Brain2D
-    data_path: /home/dp4018/data/ultrasound-data/Ultrasound-Vp-sagittal/
+    data_path: /home/dp4018/data/ultrasound-data/Ultrasound-Vp-transverse-models/
     mode: vp
     maxsamples: null
-    image_size: 256
+    resize: 256
     scale: [-1, 1]
     clip_outliers: outer
     to_tensor: false
     normalise: false
-    channels: 1
+    condition:
+        mode: pids
+        path: "/home/dp4018/scripts/pids/processed/skull_start/"    
+        resize: 256
+        scale: [-1, 1]
+        clip_outliers: false
+        to_tensor: false
+        normalise: false
 
 logging:
     tool: tensorboard
@@ -17,15 +24,15 @@ autoencoder:
     model:
         in_channels: 1
         out_channels: 1
-        ch: 128
+        feature_channels: 128
         z_channels : 3
-        emb_channels : 3
-        ch_mult: [1, 2, 2, 2]
+        embbeded_channels : 3
+        channels_mult: [1, 2, 2, 2]
         num_res_blocks: 2
         recon_loss: l2
         div_loss: kl
         perceptual_loss: wiener
-        checkpoint: null
+        checkpoint: /home/dp4018/scripts/InverseLDM/exps/condition_1/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
 
     params:
         div_weight: 0.00001
@@ -33,25 +40,20 @@ autoencoder:
         recon_weight: 1.
         
     training:
-        batch_size: 16
-        n_epochs: 250
-        save_recon_freq: 500 
+        batch_size: 8
+        n_epochs: 50 # 100 # 250
+        save_recon_freq: 500
         ckpt_freq: 100
         ckpt_last_only: true
         num_workers: 4
+        sampling_freq: 500
 
     validation:
-        split: 0.1
-        batch_size: 16
+        split: 0.2
+        batch_size: 8
         freq: 50
         save_recon_freq: 500
         num_workers: 4
-
-    sampling:
-        sampling_only: false
-        batch_size: 4
-        freq: 0
-        n_samples: 0
 
     optim:
         weight_decay: 0.000
@@ -67,12 +69,16 @@ autoencoder:
 
 diffusion:
     model:
-        ch: 128
-        ch_mult: [1, 1, 3]
+        feature_channels: 128
+        channels_mult: [1, 1, 3]
         num_res_blocks: 2
-        attention: [True, True, False]
-        ema_rate: 0.999
+        attention: [True, True, True]
+        num_transformer_layers: 1
+        num_attn_heads: 8
         loss: l2
+        condition:
+            in_channels: 1
+            feature_channels: 48
 
     params:
         beta_schedule: linear
@@ -83,24 +89,24 @@ diffusion:
         sampler : ddpm
 
     training:
-        batch_size: 16
+        batch_size: 8
         n_epochs: 300
         ckpt_freq: 100
         ckpt_last_only: true
+        sampling_freq: 500
         num_workers: 4 
 
     validation:
-        split: 0.1
-        batch_size: 16
-        freq: 50
+        split: 0.2
+        batch_size: 8
+        freq: 150
+        sampling_freq: 500
         num_workers: 4
         
     sampling:
-        sampling_only: false
         batch_size: 4
-        freq: 500
         output: last_only
-        n_samples: 100
+        n_samples: 10
 
     optim:
         weight_decay: 0.000
@@ -113,11 +119,3 @@ diffusion:
 
         lr_scheduler:
             scheduler: null
-
-seismic:
-    data_file: null
-    mode: pids
-    save_condition: True
-
-    params:
-        frequency: 50
