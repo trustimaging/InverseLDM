@@ -37,16 +37,16 @@ class AutoencoderWrapper(nn.Module):
                  device: str):
         super().__init__()
         self.encoder = Encoder(
-            channels=args.model.ch,
-            channel_multipliers=args.model.ch_mult,
+            channels=args.model.feature_channels,
+            channel_multipliers=args.model.channels_mult,
             n_resnet_blocks=args.model.num_res_blocks,
             in_channels=args.model.in_channels,
             z_channels=args.model.z_channels,
         )
 
         self.decoder = Decoder(
-            channels=args.model.ch,
-            channel_multipliers=args.model.ch_mult,
+            channels=args.model.feature_channels,
+            channel_multipliers=args.model.channels_mult,
             n_resnet_blocks=args.model.num_res_blocks,
             out_channels=args.model.out_channels,
             z_channels=args.model.z_channels,
@@ -55,7 +55,7 @@ class AutoencoderWrapper(nn.Module):
         self.model = Autoencoder(
             encoder=self.encoder,
             decoder=self.decoder,
-            emb_channels=args.model.emb_channels,
+            emb_channels=args.model.embbeded_channels,
             z_channels=args.model.z_channels
         ).to(device)
 
@@ -134,9 +134,13 @@ class Autoencoder(nn.Module):
         # Decode the image of shape `[batch_size, channels, height, width]`
         return self.decoder(z)
     
-    def sample(self, n_samples: int = None) -> torch.Tensor:
+    def sample(self) -> torch.Tensor:
         # Sample from the distribution
         return self.mean + self.std * torch.randn_like(self.std)
+    
+    # def sample(self) -> torch.Tensor:
+    #     # Sample from the distribution
+    #     return torch.randn_like(self.std)
 
 
 class Encoder(nn.Module):
