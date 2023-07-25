@@ -30,8 +30,8 @@ import torch
 import torch.nn as nn
 
 from .autoencoder_model import Autoencoder
-from .unet_model import UNet
-from .diffusion_samplers import *
+from .unet import UNetModel
+from .samplers import *
 
 import argparse
 
@@ -52,13 +52,26 @@ class DiffusionWrapper(nn.Module):
         self.args = args
         self.autoencoder = autoencoder
 
-        self.unet = UNet(
-            image_channels=autoencoder.emb_channels,
-            n_channels=args.model.ch,
-            ch_mults=args.model.ch_mult,
-            is_attn=args.model.attention,
-            n_blocks=args.model.num_res_blocks
-        ).to(device)
+        # self.unet = UNetModel(
+        #     image_channels=autoencoder.emb_channels,
+        #     n_channels=args.model.ch,
+        #     ch_mults=args.model.ch_mult,
+        #     is_attn=args.model.attention,
+        #     n_blocks=args.model.num_res_blocks
+        # ).to(device)
+
+
+        self.unet = UNetModel(
+            in_channels= autoencoder.emb_channels,
+            out_channels= autoencoder.emb_channels,
+            channels= args.model.feature_channels,
+            n_res_blocks= args.model.num_res_blocks,
+            attention_levels= args.model.attention,
+            channel_multipliers= args.model.channels_mult,
+            n_heads= args.model.num_attn_heads,
+            tf_layers= args.model.num_transformer_layers,
+            cond_in_channels = args.model.condition.in_channels,
+            d_cond=args.model.condition.feature_channels).to(device)
 
         self.ldm = LatentDiffusion(
                  unet_model=self.unet,
@@ -86,6 +99,7 @@ class DiffusionWrapper(nn.Module):
         return self.ldm.device
 
     def forward(self, x: torch.Tensor,
+                condition: Optional[torch.Tensor] = None,
                 noise: Optional[torch.Tensor] = None):
 
         # Get batch size
@@ -105,7 +119,7 @@ class DiffusionWrapper(nn.Module):
         xt = self.sampler.q_sample(x0, t, noise=noise)
 
         # Get $\textcolor{lightgreen}{\epsilon_\theta}(\sqrt{\bar\alpha_t} x_0 + \sqrt{1-\bar\alpha_t}\epsilon, t)$
-        noise_pred = self.ldm(xt, t)
+        noise_pred = self.ldm(xt, t, condition)
     
         return noise, noise_pred
 
@@ -117,7 +131,7 @@ class LatentDiffusion(nn.Module):
     """
 
     def __init__(self,
-                 unet_model: UNet,
+                 unet_model: UNetModel,
                  autoencoder: Autoencoder,
                  latent_scaling_factor: float,
                  n_steps: int,
@@ -189,15 +203,15 @@ class LatentDiffusion(nn.Module):
         """
         return self.first_stage_model.decode(z / self.latent_scaling_factor)
 
-    def forward(self, x: torch.Tensor, t: torch.Tensor, context: Optional[torch.Tensor] = None):
+    def forward(self, x: torch.Tensor, t: torch.Tensor, c: Optional[torch.Tensor] = None):
         """
         ### Predict noise
 
         Predict noise given the latent representation $x_t$, time step $t$, and the
-        conditioning context $c$.
+        conditioning c $c$.
 
         $$\epsilon_\text{cond}(x_t, c)$$
         """
-        return self.unet_model(x, t, context)
+        return self.unet_model(x, t, c)
     
 
