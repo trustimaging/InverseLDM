@@ -39,9 +39,13 @@ def setup_train():
     # set up loggers
     setup_logger(args)
 
-    # for training, we must make sure the sampling_only flags are off
-    args.autoencoder.sampling.sampling_only = False
-    args.diffusion.sampling.sampling_only = False
+    # if condition requested but path not passed, look at working directory
+    if args.data.condition.mode is not None and args.data.condition.path is None:
+        args.data.condition.path = os.getcwd()
+
+    # for training we must make sure the sampling_only flags are off
+    args.autoencoder.sampling_only = False
+    args.diffusion.sampling_only = False
 
     # save updated args as config in log folder
     with open(os.path.join(args.run.log_folder, "config.yml"), "w") as f:
@@ -296,8 +300,10 @@ def default_missing_args(args):
         return args
     
     args = default(args, default_args)
+
     args.autoencoder.name = "autoencoder"
     args.diffusion.name = "diffusion"
+
     return args
 
 
@@ -377,11 +383,11 @@ def create_training_experiment_folders(args):
         create_folder(track_folder, args.run.overwrite, exception)
 
     # Create samples folders
-    if args.diffusion.sampling.freq > 0:
+    if args.diffusion.training.sampling_freq > 0:
         samples_folder = os.path.join(diffusion_log_path, "samples")
         args.diffusion.samples_path = samples_folder
         create_folder(samples_folder, args.run.overwrite, exception)
-    if args.autoencoder.sampling.freq > 0:
+    if args.autoencoder.training.sampling_freq > 0:
         samples_folder = os.path.join(autoencoder_log_path, "samples")
         args.autoencoder.samples_path = samples_folder
         create_folder(samples_folder, args.run.overwrite, exception)
@@ -392,11 +398,11 @@ def create_training_experiment_folders(args):
         args.autoencoder.recon_path = recon_folder
         create_folder(recon_folder, args.run.overwrite, exception)
 
-    # Create seismic folder
-    if args.seismic.data_file and args.seismic.save_condition and args.seismic.mode != "full":
-        seismic_folder = os.path.join(args.run.exp_folder, "seismic")
-        args.seismic.seismic_path = seismic_folder
-        create_folder(seismic_folder, args.run.overwrite, exception)
+    # # Create seismic folder
+    # if args.seismic.data_file and args.seismic.save_condition and args.seismic.mode != "full":
+    #     seismic_folder = os.path.join(args.run.exp_folder, "seismic")
+    #     args.seismic.seismic_path = seismic_folder
+    #     create_folder(seismic_folder, args.run.overwrite, exception)
 
     return None
 
@@ -428,11 +434,11 @@ def create_sampling_experiment_folders(args):
     args.run.samples_folder = samples_folder
     create_folder(samples_folder, args.run.overwrite, exception=False)
 
-    # Create seismic folder
-    if args.seismic.data_file and args.seismic.save_condition and args.seismic.mode != "full":
-        seismic_folder = os.path.join(args.run.exp_folder, "seismic")
-        args.seismic.seismic_path = seismic_folder
-        create_folder(seismic_folder, args.run.overwrite, exception=False)
+    # # Create seismic folder
+    # if args.seismic.data_file and args.seismic.save_condition and args.seismic.mode != "full":
+    #     seismic_folder = os.path.join(args.run.exp_folder, "seismic")
+    #     args.seismic.seismic_path = seismic_folder
+    #     create_folder(seismic_folder, args.run.overwrite, exception=False)
 
     return None
 
