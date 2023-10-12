@@ -26,12 +26,10 @@ class DiffusionRunner(BaseRunner):
 
         if self.args.sampling_only:
             self.temperature = self.args.sampling.temperature
-            self.skip_steps = self.args.sampling.skip_steps
+            self.skip_steps = int(self.args.sampling.skip_steps)
         else:
             self.temperature = self.args.training.sampling_temperature
-            self.skip_steps = self.args.training.sampling_skip_steps
-
-        print(self.temperature, self.skip_steps)
+            self.skip_steps = int(self.args.training.sampling_skip_steps)
 
     def train_step(self, input, **kwargs):
         # Dictionary of outputs
