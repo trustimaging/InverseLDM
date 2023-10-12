@@ -52,15 +52,6 @@ class DiffusionWrapper(nn.Module):
         self.args = args
         self.autoencoder = autoencoder
 
-        # self.unet = UNetModel(
-        #     image_channels=autoencoder.emb_channels,
-        #     n_channels=args.model.ch,
-        #     ch_mults=args.model.ch_mult,
-        #     is_attn=args.model.attention,
-        #     n_blocks=args.model.num_res_blocks
-        # ).to(device)
-
-
         self.unet = UNetModel(
             in_channels= autoencoder.emb_channels,
             out_channels= autoencoder.emb_channels,
@@ -89,7 +80,7 @@ class DiffusionWrapper(nn.Module):
         elif args.params.sampler.lower() == "ddpm":
             self.sampler = DDPMSampler(model=self.ldm).to(device)
         else:
-            raise NotImplementedError(f"{args.params.sampler} not implemented.")
+            raise NotImplementedError(f"{args.params.sampler} sampler not implemented.")
     
     @property
     def device(self):
@@ -109,18 +100,18 @@ class DiffusionWrapper(nn.Module):
         t = torch.randint(0, self.ldm.n_steps, (batch_size,), device=x.device, dtype=torch.long)
 
         # Encode x to latent 
-        x0 = self.ldm.autoencoder_encode(x)
+        z0 = self.ldm.autoencoder_encode(x)
 
         # $\epsilon \sim \mathcal{N}(\mathbf{0}, \mathbf{I})$
         if noise is None:
-            noise = torch.randn_like(x0)
+            noise = torch.randn_like(z0)
 
         # Sample $x_t$ for $q(x_t|x_0)$
-        xt = self.sampler.q_sample(x0, t, noise=noise)
+        zt = self.sampler.q_sample(z0, t, noise=noise)
 
         # Get $\textcolor{lightgreen}{\epsilon_\theta}(\sqrt{\bar\alpha_t} x_0 + \sqrt{1-\bar\alpha_t}\epsilon, t)$
-        noise_pred = self.ldm(xt, t, condition)
-    
+        noise_pred = self.ldm(zt, t, condition)
+
         return noise, noise_pred
 
 
