@@ -1,4 +1,6 @@
+import torch
 import logging
+from torchsummary import summary
 
 from .autoencoder_runner import AutoencoderRunner
 from .diffusion_runner import DiffusionRunner
@@ -51,9 +53,28 @@ class Trainer():
             valid_loader=self.diffusion_valid_dataloader,
         )
 
+
     def train(self):
+        logging.info(" ---- Dataset ---- ")
+        logging.info(self.dataset)
+
+        logging.info(" ---- Model - Autoencoder ----")
+        sample = self.dataset[0]
+        if isinstance(sample, tuple):
+            sample = sample[0]
+        sample = sample.to(self.autoencoder.device)
+        logging.info(summary(model=self.autoencoder.model.module, input_data=sample.shape))
+
+        logging.info(" ---- Model - Diffusion ----")
+        with torch.no_grad():
+            _ = self.diffusion.model.module.autoencoder.encode(sample.unsqueeze(0).float())
+            embbeded_sample = self.diffusion.model.module.autoencoder.sample().squeeze(0).to(self.diffusion.device)
+        logging.info(summary(model=self.diffusion.model.module, input_data=embbeded_sample.shape))
+        
         logging.info(" ---- Autoencoder Training ---- ")
         self.autoencoder.train()
+
         logging.info(" ---- Diffusion Training ---- ")
         self.diffusion.train()
+
         logging.info(" ---- Training Concluded without Errors ---- ")
