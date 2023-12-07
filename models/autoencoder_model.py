@@ -117,7 +117,7 @@ class Autoencoder(nn.Module):
         # Save distribution params
         self.mean, log_var = torch.chunk(moments, 2, dim=1)
         # Clamp the log of variances
-        self.log_var = torch.clamp(log_var, -30.0, 20.0)
+        self.log_var = torch.clamp(log_var, -20.0, 3.0)
         # Calculate standard deviation
         self.std = torch.exp(0.5 * self.log_var)
 
@@ -505,4 +505,7 @@ def normalization(channels: int):
 
     This is a helper function, with fixed number of groups and `eps`.
     """
-    return nn.GroupNorm(num_groups=32, num_channels=channels, eps=1e-6)
+    if channels > 32:
+        return nn.GroupNorm(num_groups=32, num_channels=channels, eps=1e-6)
+    else:
+        return nn.Identity()
