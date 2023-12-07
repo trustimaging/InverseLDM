@@ -27,7 +27,6 @@ import torch.nn.functional as F
 
 from .attention import SpatialTransformer
 
-
 class UNetModel(nn.Module):
     """
     ## U-Net model
@@ -195,6 +194,7 @@ class UNetModel(nn.Module):
         for module in self.input_blocks:
             x = module(x, t_emb, cond)
             x_input_block.append(x)
+        
         # Middle of the U-Net
         x = self.middle_block(x, t_emb, cond)
         # Output half of the U-Net
@@ -345,6 +345,7 @@ def normalization(channels):
     """
     return GroupNorm32(32, channels)
 
+
 def closest_multiple(n, x):
     if x > n:
         return x
@@ -352,6 +353,7 @@ def closest_multiple(n, x):
     n = n + z
     n = n - (n % x)
     return n
+
 
 def _test_time_embeddings():
     """
