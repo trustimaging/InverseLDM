@@ -10,7 +10,6 @@ def divergence(args, mean, log_var):
                                + log_var.exp() - 1.0
                                - log_var, dim=[1, 2, 3])
     else:
-
         raise NotImplementedError(
             "Currently only supporting the KL divergence loss"
         )
