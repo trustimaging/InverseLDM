@@ -119,6 +119,7 @@ diffusion:
 
     optim:
         weight_decay: 0.000
+        bias_weight_decay: true
         optimiser: "Adam"
         lr: 0.00002
         beta1: 0.9
