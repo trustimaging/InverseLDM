@@ -66,7 +66,7 @@ class BaseRunner(ABC):
             "name": self.args.name,
             "dataset": str(self.train_loader.dataset.dataset),
             "device": self.device,
-            "gpus": torch.cuda.get_device_name(self.device) if "cuda" in self.device else None
+            "gpus": torch.cuda.get_device_name(self.device) if "cuda" in str(self.device) else None
         }
         hparam_dict.update(namespace2dict(self.args, flatten=True))
         self.hparam_dict = hparam_dict
