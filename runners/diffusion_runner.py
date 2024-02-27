@@ -20,6 +20,8 @@ class DiffusionRunner(BaseRunner):
                                            device=self.device,
                                            device_ids=self.gpu_ids)
 
+        self.device = self.model.module.device
+
         self.optimiser = _instance_optimiser(self.args, self.model)
         self.lr_scheduler = _instance_lr_scheduler(self.args, self.optimiser)
         self.loss_fn = _instance_diffusion_loss_fn(self.args)

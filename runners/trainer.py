@@ -63,13 +63,13 @@ class Trainer():
         if isinstance(sample, tuple):
             sample = sample[0]
         sample = sample.to(self.autoencoder.device)
-        logging.info(summary(model=self.autoencoder.model.module, input_data=sample.shape))
+        logging.info(summary(model=self.autoencoder.model.module, input_data=sample.shape, device=self.autoencoder.device))
 
         logging.info(" ---- Model - Diffusion ----")
         with torch.no_grad():
             _ = self.diffusion.model.module.autoencoder.encode(sample.unsqueeze(0).float())
             embbeded_sample = self.diffusion.model.module.autoencoder.sample().squeeze(0).to(self.diffusion.device)
-        logging.info(summary(model=self.diffusion.model.module, input_data=embbeded_sample.shape))
+        logging.info(summary(model=self.diffusion.model.module, input_data=embbeded_sample.shape, device=self.diffusion.device))
         
         logging.info(" ---- Autoencoder Training ---- ")
         self.autoencoder.train()
