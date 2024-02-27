@@ -13,6 +13,6 @@ if __name__ == "__main__":
     # ciations, and data conditioning
     trainer = Trainer(args)
 
-    # Train autoencoder (fisrt stage model) and diffusion
+    # Train autoencoder (first stage model) and diffusion
     # in sequence
     trainer.train()
