@@ -1,3 +1,4 @@
 exps/
 slurm*
 *.ipynb
+**/__pycache__/
