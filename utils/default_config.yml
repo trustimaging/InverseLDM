@@ -59,6 +59,7 @@ autoencoder:
 
     optim:
         weight_decay: 0.000
+        bias_weight_decay: false
         optimiser: "Adam"
         lr: 0.00002
         beta1: 0.9
@@ -74,7 +75,7 @@ diffusion:
         feature_channels: 128
         channels_mult: [1, 1, 2, 2]
         num_res_blocks: 2
-        attention: [True, True, False, False]
+        attention: [0, 1, 2, 3]
         num_transformer_layers: 1
         num_attn_heads: 8
         loss: l2
@@ -119,7 +120,7 @@ diffusion:
 
     optim:
         weight_decay: 0.000
-        bias_weight_decay: true
+        bias_weight_decay: false
         optimiser: "Adam"
         lr: 0.00002
         beta1: 0.9
