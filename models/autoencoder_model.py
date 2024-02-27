@@ -138,6 +138,13 @@ class Autoencoder(nn.Module):
         # Sample from the distribution
         return self.mean + self.std * torch.randn_like(self.std)
     
+    @property
+    def device(self):
+        """
+        ### Get model device
+        """
+        return next(iter(self.encoder.parameters())).device
+    
     # def sample(self) -> torch.Tensor:
     #     # Sample from the distribution
     #     return torch.randn_like(self.std)
@@ -315,7 +322,7 @@ class Decoder(nn.Module):
         # Normalize and map to image space
         h = self.norm_out(h)
         h = swish(h)
-        img = self.conv_out(h)
+        img = torch.sigmoid(self.conv_out(h))
 
         #
         return img
