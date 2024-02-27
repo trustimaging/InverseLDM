@@ -31,7 +31,7 @@ def _instance_optimiser(args, model):
             pass
 
     # change weight decay of biases to zero if prompted
-    if args.optim.bias_weight_decay is not None:
+    if not args.optim.bias_weight_decay:
         decay_params, no_decay_params = [], []
         for name, param in model.named_parameters():
             if not param.requires_grad:
@@ -39,7 +39,7 @@ def _instance_optimiser(args, model):
             elif len(param.shape) == 1 or name.endswith(".bias"):
                 no_decay_params.append(param)
             else: decay_params.append(param)
-        params = [{'params': no_decay_params, 'weight_decay': args.optim.bias_weight_decay}, {'params': decay_params, 'weight_decay': kwargs.pop("weight_decay")}]        
+        params = [{'params': no_decay_params, 'weight_decay': 0.}, {'params': decay_params, 'weight_decay': kwargs.pop("weight_decay")}]        
     else:
         params=model.parameters()
 
