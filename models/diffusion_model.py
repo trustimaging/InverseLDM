@@ -155,7 +155,7 @@ class LatentDiffusion(nn.Module):
         self.n_steps = n_steps
 
         # $\beta$ schedule
-        beta = torch.linspace(linear_start ** 0.5, linear_end ** 0.5, n_steps, dtype=torch.float64) ** 2
+        beta = torch.linspace(linear_start ** 0.5, linear_end ** 0.5, n_steps, dtype=torch.float64, device=self.device) ** 2
         self.beta = nn.Parameter(beta.to(torch.float32), requires_grad=False)
         # $\alpha_t = 1 - \beta_t$
         alpha = 1. - beta
