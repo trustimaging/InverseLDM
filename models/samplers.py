@@ -310,6 +310,13 @@ class DDIMSampler(DiffusionSampler):
         ### Sample $x_{\tau_{i-1}}$ given $\epsilon_\theta(x_{\tau_i})$
         """
 
+        # All arrays on same device
+        self.ddim_alpha = self.ddim_alpha.to(x.device)
+        self.ddim_alpha_sqrt = self.ddim_alpha_sqrt.to(x.device)
+        self.ddim_alpha_prev = self.ddim_alpha_prev.to(x.device)
+        self.ddim_sigma = self.ddim_sigma.to(x.device)
+        self.ddim_sqrt_one_minus_alpha = self.ddim_sqrt_one_minus_alpha.to(x.device)
+
         # $\alpha_{\tau_i}$
         alpha = self.ddim_alpha[index]
         # $\alpha_{\tau_{i-1}}$
@@ -377,6 +384,7 @@ class DDIMSampler(DiffusionSampler):
         # print("x0", x0.shape)
         # print("noise", noise.shape)
 
+        self.ddim_alpha = self.ddim_alpha.to(x0.device)
         self.ddim_alpha_sqrt = self.ddim_alpha_sqrt.to(x0.device)
         self.ddim_sqrt_one_minus_alpha = self.ddim_sqrt_one_minus_alpha.to(x0.device)
 
