@@ -91,7 +91,8 @@ class DiffusionWrapper(nn.Module):
 
     def forward(self, x: torch.Tensor,
                 condition: Optional[torch.Tensor] = None,
-                noise: Optional[torch.Tensor] = None):
+                noise: Optional[torch.Tensor] = None,
+                **kwargs):
 
         # Get batch size
         batch_size = x.shape[0]
