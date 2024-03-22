@@ -1,19 +1,20 @@
 data:
     dataset: Brain2D
-    data_path: /home/dp4018/data/ultrasound-data/Ultrasound-Vp-transverse-models/
+    data_path: /home/dp4018/data/ultrasound-data/Ultrasound-Vp-sagittal-models/
     mode: vp
     maxsamples: null
-    resize: 256
-    scale: [-1, 1]
+    slowness: false
+    resize: 64
+    scale: [0, 1.]
     clip_outliers: outer
     to_tensor: false
     normalise: false
     condition:
-        mode: pids
+        mode: stack
         path: "/home/dp4018/scripts/pids/processed/skull_start/"    
-        resize: 256
-        scale: [-1, 1]
-        clip_outliers: false
+        resize: 64
+        scale: [0., 1.]
+        clip_outliers: outer
         to_tensor: false
         normalise: false
 
@@ -24,41 +25,41 @@ autoencoder:
     model:
         in_channels: 1
         out_channels: 1
-        feature_channels: 128
+        feature_channels: 64
         z_channels : 3
-        embbeded_channels : 3
-        channels_mult: [1, 2, 2, 2]
+        embbeded_channels : 1
+        channels_mult: [1, 2, 2]
         num_res_blocks: 2
         recon_loss: l2
         div_loss: kl
-        perceptual_loss: wiener
-        checkpoint: /home/dp4018/scripts/InverseLDM/exps/condition_1/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
+        perceptual_loss: null
+        checkpoint: "/home/dp4018/scripts/InverseLDM/exps/autoencoder_pinaya/logs/autoencoder/checkpoints/autoencoder_ckpt_epoch_300_step_15000.pth"
 
     params:
         div_weight: 0.00001
-        perceptual_weight: 0.01
+        perceptual_weight: 0.0
         recon_weight: 1.
         
     training:
-        batch_size: 8
-        n_epochs: 50 # 100 # 250
+        batch_size: 16
+        n_epochs: 300
         save_recon_freq: 500
-        ckpt_freq: 100
-        ckpt_last_only: true
+        ckpt_freq: 500
+        ckpt_last_only: false
         num_workers: 4
         sampling_freq: 500
 
     validation:
         split: 0.2
-        batch_size: 8
+        batch_size: 16
         freq: 50
         save_recon_freq: 500
         num_workers: 4
 
     optim:
-        weight_decay: 0.000
+        weight_decay: 0.00
         optimiser: "Adam"
-        lr: 0.00002
+        lr: 0.0001
         beta1: 0.9
         amsgrad: false
         eps: 0.00000001
@@ -69,31 +70,32 @@ autoencoder:
 
 diffusion:
     model:
-        feature_channels: 128
-        channels_mult: [1, 1, 3]
+        feature_channels: 128 
+        channels_mult: [1, 2, 3]
         num_res_blocks: 2
-        attention: [True, True, True]
-        num_transformer_layers: 1
-        num_attn_heads: 8
+        attention: [0, 1, 2]
+        num_transformer_layers: 2
+        num_attn_heads: 1
         loss: l2
         condition:
             in_channels: 1
-            feature_channels: 48
+            feature_channels: 64
 
     params:
-        beta_schedule: linear
         beta_start: 0.0015
         beta_end: 0.0205
         num_diffusion_timesteps: 1000
         latent_scaling_factor: 1.
-        sampler : ddpm
+        sampler : ddim
 
     training:
         batch_size: 8
-        n_epochs: 300
+        n_epochs: 200
         ckpt_freq: 100
         ckpt_last_only: true
         sampling_freq: 500
+        sampling_temperature: 0.5
+        sampling_skip_steps: 0
         num_workers: 4 
 
     validation:
@@ -104,12 +106,12 @@ diffusion:
         num_workers: 4
         
     sampling:
-        batch_size: 4
+        batch_size: 2
         output: last_only
         n_samples: 10
 
     optim:
-        weight_decay: 0.000
+        weight_decay: 0.0001
         optimiser: "Adam"
         lr: 0.00002
         beta1: 0.9
