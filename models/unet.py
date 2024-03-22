@@ -43,7 +43,7 @@ class UNetModel(nn.Module):
             n_heads: int,
             tf_layers: int = 1,
             cond_in_channels: int = 1,
-            d_cond: int = 768):
+            d_cond: int = 32):
         """
         :param in_channels: is the number of channels in the input feature map
         :param out_channels: is the number of channels in the output feature map
@@ -92,59 +92,71 @@ class UNetModel(nn.Module):
         # `TimestepEmbedSequential` calls them accordingly.
         self.input_blocks.append(TimestepEmbedSequential(
             nn.Conv2d(in_channels, channels, 3, padding=1)))
+        
         # Number of channels at each block in the input half of U-Net
         input_block_channels = [channels]
+        
         # Number of channels at each level
         channels_list = [channels * m for m in channel_multipliers]
+        
         # Prepare levels
         for i in range(levels):
+            
             # Add the residual blocks and attentions
             for _ in range(n_res_blocks):
+                
                 # Residual block maps from previous number of channels to the number of
                 # channels in the current level
-                layers = [ResBlock(channels, d_time_emb, out_channels=channels_list[i])]
+                layers = [ResBlock(channels, d_time_emb, d_cond, out_channels=channels_list[i])]
                 channels = channels_list[i]
+                
                 # Add transformer
                 if i in attention_levels:
-                    # d_cond = channels
                     layers.append(SpatialTransformer(channels, n_heads, tf_layers, d_cond))
+                
                 # Add them to the input half of the U-Net and keep track of the number of channels of
                 # its output
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
                 input_block_channels.append(channels)
+            
             # Down sample at all levels except last
             if i != levels - 1:
                 self.input_blocks.append(TimestepEmbedSequential(DownSample(channels)))
                 input_block_channels.append(channels)
-
+        
         # The middle of the U-Net
-        # d_cond = channels
         self.middle_block = TimestepEmbedSequential(
-            ResBlock(channels, d_time_emb),
+            ResBlock(channels, d_time_emb, d_cond),
             SpatialTransformer(channels, n_heads, tf_layers, d_cond),
-            ResBlock(channels, d_time_emb),
+            ResBlock(channels, d_time_emb, d_cond),
         )
 
         # Second half of the U-Net
         self.output_blocks = nn.ModuleList([])
+        
         # Prepare levels in reverse order
         for i in reversed(range(levels)):
+        
             # Add the residual blocks and attentions
             for j in range(n_res_blocks + 1):
+        
                 # Residual block maps from previous number of channels plus the
                 # skip connections from the input half of U-Net to the number of
                 # channels in the current level.
-                layers = [ResBlock(channels + input_block_channels.pop(), d_time_emb, out_channels=channels_list[i])]
+                layers = [ResBlock(channels + input_block_channels.pop(), d_time_emb, d_cond, out_channels=channels_list[i])]
                 channels = channels_list[i]
+        
                 # Add transformer
                 if i in attention_levels:
                     # d_cond = channels
                     layers.append(SpatialTransformer(channels, n_heads, tf_layers, d_cond))
+        
                 # Up-sample at every level after last residual block
                 # except the last one.
                 # Note that we are iterating in reverse; i.e. `i == 0` is the last.
                 if i != 0 and j == n_res_blocks:
                     layers.append(UpSample(channels))
+        
                 # Add to the output half of the U-Net
                 self.output_blocks.append(TimestepEmbedSequential(*layers))
 
@@ -217,7 +229,7 @@ class TimestepEmbedSequential(nn.Sequential):
     def forward(self, x, t_emb, cond=None):
         for layer in self:
             if isinstance(layer, ResBlock):
-                x = layer(x, t_emb)
+                x = layer(x, t_emb, cond)
             elif isinstance(layer, SpatialTransformer):
                 x = layer(x, cond)
             else:
@@ -274,10 +286,11 @@ class ResBlock(nn.Module):
     ## ResNet Block
     """
 
-    def __init__(self, channels: int, d_t_emb: int, *, out_channels=None):
+    def __init__(self, channels: int, d_t_emb: int, d_cond: int, *, out_channels=None):
         """
         :param channels: the number of input channels
         :param d_t_emb: the size of timestep embeddings
+        :param d_t_emb: the number of condition channels
         :param out_channels: is the number of out channels. defaults to `channels.
         """
         super().__init__()
@@ -287,13 +300,19 @@ class ResBlock(nn.Module):
 
         # First normalization and convolution
         self.in_layers = nn.Sequential(
-            normalization(channels),
+            normalization(2*channels),
             nn.SiLU(),
-            nn.Conv2d(channels, out_channels, 3, padding=1),
+            nn.Conv2d(2*channels, out_channels, 3, padding=1),
+        )
+
+        # Condition  embeddings
+        self.c_emb_layers = nn.Sequential(
+            nn.SiLU(),
+            nn.Conv2d(d_cond, channels, kernel_size=1),
         )
 
         # Time step embeddings
-        self.emb_layers = nn.Sequential(
+        self.t_emb_layers = nn.Sequential(
             nn.SiLU(),
             nn.Linear(d_t_emb, out_channels),
         )
@@ -306,27 +325,56 @@ class ResBlock(nn.Module):
         )
 
         # `channels` to `out_channels` mapping layer for residual connection
-        if out_channels == channels:
+        if out_channels == 2*channels:
             self.skip_connection = nn.Identity()
         else:
-            self.skip_connection = nn.Conv2d(channels, out_channels, 1)
+            self.skip_connection = nn.Conv2d(2*channels, out_channels, 1)
 
-    def forward(self, x: torch.Tensor, t_emb: torch.Tensor):
+        # Interpolator for condition
+        self.interpolator = Interpolate(mode="nearest")
+
+    def forward(self, x: torch.Tensor, t_emb: torch.Tensor, c: torch.Tensor=None):
         """
         :param x: is the input feature map with shape `[batch_size, channels, height, width]`
+        :param c: the condition feature map with shape `[batch_size, d_cond, height, width]`
         :param t_emb: is the time step embeddings of shape `[batch_size, d_t_emb]`
         """
+
+        # Condition embedding and interpolation
+        if c is not None:
+            c_emb = self.c_emb_layers(c)
+            c_emb = self.interpolator(c_emb, x.shape[-2:])
+            x = torch.concat([x, c_emb], dim=1)
+        else:
+            x = torch.concat([x, x], dim=1)
+
         # Initial convolution
         h = self.in_layers(x)
+
         # Time step embeddings
-        t_emb = self.emb_layers(t_emb).type(h.dtype)
+        t_emb = self.t_emb_layers(t_emb).type(h.dtype)
+
         # Add time step embeddings
         h = h + t_emb[:, :, None, None]
+
         # Final convolution
         h = self.out_layers(h)
+        
         # Add skip connection
         return self.skip_connection(x) + h
 
+
+class Interpolate(nn.Module):
+    def __init__(self, **kwargs):
+        super(Interpolate, self).__init__()
+        self.interp = nn.functional.interpolate
+
+        kwargs.pop("size", None)
+        self.kwargs = kwargs
+        
+    def forward(self, x, size):
+        return self.interp(x, size=size, **self.kwargs)
+    
 
 class GroupNorm32(nn.GroupNorm):
     """
