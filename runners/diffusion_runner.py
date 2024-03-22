@@ -97,7 +97,8 @@ class DiffusionRunner(BaseRunner):
             shape=z.shape,
             cond=cond,
             temperature=self.temperature,
-            skip_steps=self.skip_steps
+            skip_steps=self.skip_steps,
+            repeat_noise=False,
         )
 
         # Decode to reconstruct data
