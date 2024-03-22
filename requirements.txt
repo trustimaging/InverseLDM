@@ -6,3 +6,4 @@ PyYAML==6.0.1
 torch==2.1.2
 torch_summary==1.4.5
 torchvision==0.16.2
+tensorboard==2.12.1 
