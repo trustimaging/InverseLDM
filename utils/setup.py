@@ -164,28 +164,6 @@ def parse_args():
         default=42,
         help="Random seed for reproducibility"
     )
-    # parser.add_argument(
-    #     "--use_pretrained",
-    #     action="store_true",
-    #     help="Whether to load a pretrained model training. Used in conjunction\
-    #         with checkpoint flag. If checkpoint not specified, will use latest model."
-    # )
-    # parser.add_argument(
-    #     "--autoencoder_checkpoint",
-    #     default="",
-    #     help="Checkpoint .pth file to load or step number to load from\
-    #             log dir. If checkpoint is a file, the saved state must be a\
-    #             dictionary containing 'model_state_dict',\
-    #             'optimiser.state_dict', 'epoch' and 'step'"
-    # )
-    # parser.add_argument(
-    #     "--diffusion_checkpoint",
-    #     default="",
-    #     help="Checkpoint .pth file to load or step number to load from\
-    #             log dir. If checkpoint is a file, the saved state must be a\
-    #             dictionary containing 'model_state_dict',\
-    #             'optimiser.state_dict', 'epoch' and 'step'"
-    # )
     parser.add_argument(
         "--resume_training",
         action="store_true",
@@ -256,7 +234,7 @@ def check_devices(args):
         pass
     else:
         new_device = "cuda" if torch.cuda.is_available() else "cpu"
-        logging.warn(f"Device {args.run.device} can't be recognised. Changing devide to {new_device}.")
+        logging.warn(f"Device '{args.run.device}' can't be recognised. Changing devide to {new_device}.")
         args.run.device = new_device
 
     gpu_ids = []
@@ -278,7 +256,7 @@ def check_tracking_tool(args):
             open(track_file, "r")
         except FileNotFoundError:
             raise Exception(FileNotFoundError,
-                            f"Expecting file {track_file} to exist, but not found")
+                            f"Expecting file '{track_file}' to exist, but not found")
     return args
 
 
@@ -316,7 +294,7 @@ def check_overwrite(args):
             if args.run.y:
                 user_input = "y"
             else:
-                user_input = input(f"The current directory {args.run.exp_folder} is about to be rewritten. Do you wish to proceed (YES/NO) : ")
+                user_input = input(f"The current directory '{args.run.exp_folder}' is about to be rewritten. Do you wish to proceed (YES/NO) : ")
             
             if user_input.lower() in ['y', 'yes']:
                 pass
@@ -339,7 +317,7 @@ def create_folder(folder, overwrite=False, exception=True):
             logging.info(f"Done!")
         else:
             if exception:
-                raise Exception(FileExistsError, f"Experiment folder {folder} already exists. Use the --overwrite flag if you wish to overwrite or --resume_training flag to continue training from a checkpoint.")
+                raise Exception(FileExistsError, f"Experiment folder '{folder}' already exists. Use the --overwrite flag if you wish to overwrite or --resume_training flag to continue training from a checkpoint.")
             else:
                 pass
     return None
@@ -398,36 +376,30 @@ def create_training_experiment_folders(args):
         args.autoencoder.recon_path = recon_folder
         create_folder(recon_folder, args.run.overwrite, exception)
 
-    # # Create seismic folder
-    # if args.seismic.data_file and args.seismic.save_condition and args.seismic.mode != "full":
-    #     seismic_folder = os.path.join(args.run.exp_folder, "seismic")
-    #     args.seismic.seismic_path = seismic_folder
-    #     create_folder(seismic_folder, args.run.overwrite, exception)
-
     return None
 
 
 def create_sampling_experiment_folders(args):
 
     # Check experiment exists
-    assert os.path.exists(args.run.exp_folder), f"Experiment folder {args.run.exp_folder} not found. "
-    assert os.path.exists(args.run.log_folder), f"Experiment logging folder {args.run.log_folder} not found. "
+    assert os.path.exists(args.run.exp_folder), f"Experiment folder '{args.run.exp_folder}' not found. "
+    assert os.path.exists(args.run.log_folder), f"Experiment logging folder '{args.run.log_folder}' not found. "
 
     autoencoder_log_path = os.path.join(args.run.log_folder, "autoencoder")
     args.autoencoder.log_path = autoencoder_log_path
-    assert os.path.exists(autoencoder_log_path), f" Autoencoder logging folder {autoencoder_log_path} not found. " 
+    assert os.path.exists(autoencoder_log_path), f" Autoencoder logging folder '{autoencoder_log_path}' not found. " 
 
     diffusion_log_path = os.path.join(args.run.log_folder, "diffusion")
     args.diffusion.log_path = diffusion_log_path
-    assert os.path.exists(diffusion_log_path), f" Diffusion logging folder {diffusion_log_path} not found. " 
+    assert os.path.exists(diffusion_log_path), f" Diffusion logging folder '{diffusion_log_path}' not found. " 
 
     autoencoder_ckpt_path = os.path.join(autoencoder_log_path, "checkpoints")
     args.autoencoder.ckpt_path = autoencoder_ckpt_path
-    assert os.path.exists(autoencoder_ckpt_path), f" Autoencoder checkpoint folder {autoencoder_ckpt_path} not found. " 
+    assert os.path.exists(autoencoder_ckpt_path), f" Autoencoder checkpoint folder '{autoencoder_ckpt_path}' not found. " 
 
     diffusion_ckpt_path = os.path.join(diffusion_log_path, "checkpoints")
     args.diffusion.ckpt_path = diffusion_ckpt_path
-    assert os.path.exists(diffusion_ckpt_path), f" Autoencoder checkpoint folder {diffusion_ckpt_path} not found. " 
+    assert os.path.exists(diffusion_ckpt_path), f" Autoencoder checkpoint folder '{diffusion_ckpt_path}' not found. " 
 
     # Create samples folders
     samples_folder = os.path.join(args.run.exp_folder, "samples")
@@ -446,7 +418,7 @@ def create_sampling_experiment_folders(args):
 def setup_logger(args):
     level = getattr(logging, args.run.verbose.upper(), None)
     if not isinstance(level, int):
-        raise ValueError("level {} not supported".format(args.run.verbose))
+        raise ValueError("Logger level {} not supported".format(args.run.verbose))
 
     handler1 = logging.StreamHandler()
     handler2 = logging.FileHandler(os.path.join(args.run.log_folder, "stdout.txt"))
