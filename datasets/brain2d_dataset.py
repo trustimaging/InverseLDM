@@ -51,7 +51,7 @@ class Brain2DDataset(BaseDataset):
     def _get_condition_path(self, data_path):
         """
         Finds inside self.args.condition.path a .npy or .npy.gz file
-        containing the name of the data item of data_path
+        containing the name of the data item of data_path with suffix '-self.args.condition.mode'
         """
 
         name = os.path.splitext(os.path.split(data_path)[-1])[0]
@@ -87,6 +87,10 @@ class Brain2DDataset(BaseDataset):
 
         # Read data
         y = self._read_npy_data(y_path)
+
+        # slowness
+        if self.args.slowness:
+            y = 1./ y
         
         # Apply transform
         if self.transform:
@@ -94,11 +98,12 @@ class Brain2DDataset(BaseDataset):
 
         # Get condition, apply steps above
         if self.args.condition.mode is not None and self.args.condition.path is not None:
-            cond_path = self._get_condition_path(y_path)
-            cond = self._read_npy_data(cond_path)
-            if self.cond_transform:
-                cond = self.cond_transform(cond)
-            return y, cond
+            # cond_path = self._get_condition_path(y_path)
+            # cond = self._read_npy_data(cond_path)
+            # if self.cond_transform:
+            #     cond = self.cond_transform(cond)
+            # return y, cond
+            return y, y
         return y
 
     def __len__(self):
