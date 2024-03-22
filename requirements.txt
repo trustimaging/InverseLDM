@@ -1,9 +1,8 @@
+flash_attn==2.5.6
 matplotlib==3.7.0
-numpy==1.26.3
-pyyaml==6.0.1
-torch==2.1.0
-torchvision==0.16.0
-tensorboard==2.12.1 
-nvidia-ml-py3==7.352.0
-pyparsing==3.0.9
-
+numpy==1.26.4
+nvidia_ml_py3==7.352.0
+PyYAML==6.0.1
+torch==2.1.2
+torch_summary==1.4.5
+torchvision==0.16.2
