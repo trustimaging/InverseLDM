@@ -98,12 +98,12 @@ class Brain2DDataset(BaseDataset):
 
         # Get condition, apply steps above
         if self.args.condition.mode is not None and self.args.condition.path is not None:
-            # cond_path = self._get_condition_path(y_path)
-            # cond = self._read_npy_data(cond_path)
-            # if self.cond_transform:
-            #     cond = self.cond_transform(cond)
-            # return y, cond
-            return y, y
+            cond_path = self._get_condition_path(y_path)
+            cond = self._read_npy_data(cond_path)
+            cond = cond / torch.abs(torch.max(cond))
+            if self.cond_transform:
+                cond = self.cond_transform(cond)
+            return y, cond
         return y
 
     def __len__(self):
