@@ -20,7 +20,7 @@ def perceptual(args, input, recon):
         return torch.tensor([0.])
     elif args.model.perceptual_loss == "wiener":
         awloss = AWLoss(filter_dim=2, method="fft", reduction="mean", store_filters="unorm",
-                        epsilon=250., filter_scale=2, penalty_function=laplacian2D)
+                        epsilon=250., filter_scale=1, penalty_function=laplacian2D)
         return awloss(input, recon)
     else:
         raise NotImplementedError(
