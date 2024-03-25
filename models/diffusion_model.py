@@ -87,13 +87,13 @@ class DiffusionWrapper(nn.Module):
         """
         ### Get model device
         """
-        return self.ldm.device
+        return next(iter(self.unet.parameters())).device
 
     def forward(self, x: torch.Tensor,
                 condition: Optional[torch.Tensor] = None,
                 noise: Optional[torch.Tensor] = None,
                 **kwargs):
-
+        
         # Get batch size
         batch_size = x.shape[0]
 

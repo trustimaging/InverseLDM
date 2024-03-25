@@ -15,6 +15,8 @@ class AutoencoderRunner(BaseRunner):
         self.model = data_parallel_wrapper(module=self.model,
                                            device=self.device,
                                            device_ids=self.gpu_ids)
+        
+        self.device = self.model.module.device
 
         # If not in sampling only mode, instantiate optimising objects
         if not self.args.sampling_only: 
