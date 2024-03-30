@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from . import BaseRunner
-from models.utils import (_instance_autoencoder_model, _instance_optimiser,
+from ..models.utils import (_instance_autoencoder_model, _instance_optimiser,
                           _instance_autoencoder_loss_fn, _instance_lr_scheduler,
                           data_parallel_wrapper)
 
@@ -74,12 +74,10 @@ class AutoencoderRunner(BaseRunner):
         return output
     
     def sample_step(self, input, **kwargs):
-         # One autoencoder forward pass to get shape of latent space -- can be optimised!
         _, _ = self.model.module.model.encode(input)
         z = self.model.module.model.sample()
-        
-        # Sample N(0, I) in latent space and decode
-        sample = self.model.module.model.decode(torch.randn_like(z))
-        return sample    
+
+        sample = self.model.module.model.decode(z)
+        return sample, z    
 
 

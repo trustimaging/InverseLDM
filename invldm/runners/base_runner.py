@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from utils.utils import namespace2dict, gpu_diagnostics
-from utils.visualisation import visualise_samples
+from ..utils.utils import namespace2dict, gpu_diagnostics
+from ..utils.visualisation import visualise_samples
 
 torch.set_printoptions(sci_mode=False)
 
@@ -89,7 +89,7 @@ class BaseRunner(ABC):
         return None
 
     def load_checkpoint(self, path: Optional[str] = "", model_only: Optional[bool] = False) -> None:
-        if not path:
+        if not path :
             try:
                 latest_ckpt_name = [f for f in os.listdir(self.args.ckpt_path) if fnmatch.fnmatch(f, "*latest*")][0]
                 path = os.path.join(self.args.ckpt_path, latest_ckpt_name)
@@ -101,13 +101,16 @@ class BaseRunner(ABC):
                     if self.run_args.y:
                         return None
                     else:
-                        logging.critical(f"Could not find latest {self.args.name.lower()} model.")
-                        user_input = input("\tProceed from scratch? (Y/N): ")
-                        if user_input.lower() == "y" or user_input.lower() == "yes":
-                            return None
+                        if self.args.training.n_epochs > 0:
+                            logging.critical(f"Could not find latest {self.args.name.lower()} model.")
+                            user_input = input("\tProceed from scratch? (Y/N): ")
+                            if user_input.lower() == "y" or user_input.lower() == "yes":
+                                return None
+                            else:
+                                logging.critical(f"Aborting...")
+                                raise IndexError(e)
                         else:
-                            logging.critical(f"Aborting...")
-                            raise IndexError(e)
+                            return None
 
         logging.info(f"Loading {self.args.name} checkpoint {path} ...")
 
@@ -311,7 +314,7 @@ class BaseRunner(ABC):
                         # Sample and save training figure
                         if self.args.training.sampling_freq > 0 and self.steps % self.args.training.sampling_freq == 0:
                             try:
-                                sample = self.sample_step(
+                                sample, _ = self.sample_step(
                                     torch.randn_like(input),
                                     condition = condition,
                                 )
@@ -428,7 +431,7 @@ class BaseRunner(ABC):
                                 # Sample and save validation if condition is passed
                                 if valid_sampling_frequency and condition is not None and self.args.name != "autoencoder":
                                     try:
-                                        val_sample = self.sample_step(
+                                        val_sample, _ = self.sample_step(
                                             torch.randn_like(val_input),
                                             condition = val_condition,
                                         )
@@ -514,7 +517,7 @@ class BaseRunner(ABC):
                     input, condition = sample_batch, None
                     input = input.float().to(self.device)
 
-                sample = self.sample_step(input, condition=condition)
+                sample, _ = self.sample_step(input, condition=condition)
                 self.save_figure(sample, "", "sample", save_tensor=True)
 
                 logging.info(f"{self.args.name.lower().capitalize()} Sampling batch {self.steps} / {len(self.sample_loader)} concluded. {self.eta(start_time)}")
