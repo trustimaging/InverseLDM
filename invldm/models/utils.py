@@ -9,11 +9,11 @@ from .autoencoder_model import AutoencoderWrapper, GaussianDistribution
 from .losses import divergence, perceptual, reconstruction
 
 
-def _instance_autoencoder_model(args, device):
+def _instance_autoencoder_model(args, device="cpu"):
     return AutoencoderWrapper(args, device)
 
 
-def _instance_diffusion_model(autoencoder, args, device):
+def _instance_diffusion_model(autoencoder, args, device="cpu"):
     return DiffusionWrapper(autoencoder, args, device)
 
 
