@@ -4,8 +4,8 @@ import torch
 from .autoencoder_runner import AutoencoderRunner
 from .diffusion_runner import DiffusionRunner
 
-from seismic.utils import _instance_conditioner
-from datasets.utils import (_wrap_tensor_dataset, _instance_dataloader)
+from ..seismic.utils import _instance_conditioner
+from ..datasets.utils import (_wrap_tensor_dataset, _instance_dataloader)
 
 
 class Sampler():
@@ -15,15 +15,15 @@ class Sampler():
         # Datasets
         self.autoencoder_sampling_dataset = _wrap_tensor_dataset(
             torch.randn((self.args.autoencoder.sampling.n_samples,
-                                    self.args.data.channels,
-                                    self.args.data.image_size,
-                                    self.args.data.image_size))
+                                    self.args.autoencoder.sampling.input_channels,
+                                    self.args.autoencoder.sampling.input_image_size,
+                                    self.args.autoencoder.sampling.input_image_size))
         )
         self.diffusion_sampling_dataset = _wrap_tensor_dataset(
             torch.randn((self.args.diffusion.sampling.n_samples,
-                                    self.args.data.channels,
-                                    self.args.data.image_size,
-                                    self.args.data.image_size))
+                                    self.args.autoencoder.sampling.input_channels,
+                                    self.args.autoencoder.sampling.input_image_size,
+                                    self.args.autoencoder.sampling.input_image_size))
         )
 
         # Dataloaders
@@ -35,7 +35,7 @@ class Sampler():
         )
 
         # Autoencoder runner, load pre-trained, eval mode
-        assert args.autoencoder.sampling_only
+        assert args.autoencoder.sampling.sampling_only
         self.autoencoder = AutoencoderRunner(
             args=args.autoencoder,
             args_run=args.run,
@@ -49,7 +49,7 @@ class Sampler():
         self.autoencoder.model.module.model.eval()
 
         # Diffusion runner, load pre-trained, eval mode
-        assert args.diffusion.sampling_only
+        assert args.diffusion.sampling.sampling_only
         self.diffusion = DiffusionRunner(
             autoencoder=self.autoencoder.model.module.model,
             args=args.diffusion,
