@@ -1,7 +1,8 @@
 import torch
 import torch.nn.functional as F
 from awloss import AWLoss
-from utils.utils import scale2range
+from ..utils.utils import scale2range
+from functools import partial
 
 
 def divergence(args, mean, log_var):
@@ -19,8 +20,15 @@ def perceptual(args, input, recon):
     if not args.model.perceptual_loss:
         return torch.tensor([0.])
     elif args.model.perceptual_loss == "wiener":
-        awloss = AWLoss(filter_dim=2, method="fft", reduction="mean", store_filters="unorm",
-                        epsilon=250., filter_scale=1, penalty_function=laplacian2D)
+        epsilon = args.params.__dict__.get("wiener_epsilon", 250.)
+        alpha = args.params.__dict__.get("wiener_alpha", -0.2)
+        beta = args.params.__dict__.get("wiener_beta", 1.5)
+        filter_scale = args.params.__dict__.get("wiener_filter_scale", 2)
+
+        awloss = AWLoss(filter_dim=2, method="fft", reduction="mean", store_filters=False,
+                        epsilon=epsilon, filter_scale=filter_scale,
+                        penalty_function=partial(laplacian2D, alpha=alpha, beta=beta))
+        # print(awloss.__dict__)
         return awloss(input, recon)
     else:
         raise NotImplementedError(
@@ -45,8 +53,7 @@ def reconstruction(args, input, recon):
         )
 
 
-def laplacian2D(mesh):
-    alpha, beta = -0.2, 1.5
+def laplacian2D(mesh, alpha=-0.2, beta=1.5):
     xx, yy = mesh[:,:,0], mesh[:,:,1]
     x = torch.sqrt(xx**2 + yy**2) 
     T = 1 - torch.exp(-torch.abs(x) ** alpha) ** beta
