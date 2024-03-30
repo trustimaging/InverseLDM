@@ -53,6 +53,8 @@ autoencoder:
         num_workers: 32
 
     sampling:
+        input_image_size: 64
+        input_channels: 3
         batch_size: 32
         n_samples: 0
         num_workers: 32
@@ -109,6 +111,8 @@ diffusion:
         num_workers: 4
 
     sampling:
+        input_image_size: 64
+        input_channels: 3
         batch_size: 32
         temperature: 1.
         skip_steps: 0
