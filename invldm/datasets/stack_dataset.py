@@ -63,8 +63,7 @@ class StackDataset(BaseDataset):
         # Apply transform
         if self.transform:
             y = self.transform(y)
-
-        return y, 0.
+        return y
 
     def __len__(self):
         return len(self.data_paths)
