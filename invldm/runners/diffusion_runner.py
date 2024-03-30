@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from . import BaseRunner
 
-from models.utils import (_instance_diffusion_model, _instance_optimiser,
+from ..models.utils import (_instance_diffusion_model, _instance_optimiser,
                           _instance_diffusion_loss_fn, _instance_lr_scheduler,
                           data_parallel_wrapper)
 
@@ -103,4 +103,4 @@ class DiffusionRunner(BaseRunner):
 
         # Decode to reconstruct data
         sample = self.model.module.ldm.autoencoder_decode(z_sample)
-        return sample
+        return sample, z
