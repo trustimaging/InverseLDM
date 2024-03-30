@@ -1,13 +1,16 @@
 import logging
-
+import importlib 
 from .base_logger import BaseLogger, NullLogger
 
 
 def _instance_logger(args):
     if args.logging.tool is not None:
-        mod = __import__(f'logger.{args.logging.tool.lower()}_logger',
-                        fromlist=[args.logging.tool])
+        # mod = __import__(f'.{args.logging.tool.lower()}_logger.py', fromlist=[args.logging.tool], globals=globals())
+        # mod_name = f'.{args.logging.tool.lower()}_logger'
+        mod = importlib.import_module(f'.{args.logging.tool.lower()}_logger', "invldm.logger")
         cls_name = args.logging.tool.lower().capitalize() + "Logger"
+
+        
         try:
             cls = getattr(mod, cls_name)
         except AttributeError as e:

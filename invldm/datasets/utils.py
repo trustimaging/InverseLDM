@@ -1,4 +1,5 @@
 import logging
+import importlib
 
 import torch
 import numpy as np
@@ -9,8 +10,10 @@ from .base_dataset import BaseDataset
 
 
 def _instance_dataset(args):
-    mod = __import__(f'datasets.{args.dataset.lower()}_dataset',
-                     fromlist=[args.dataset])
+    # mod = __import__(f'datasets.{args.dataset.lower()}_dataset',
+    #                  fromlist=[args.dataset])
+    
+    mod = importlib.import_module(f'.{args.dataset.lower()}_dataset', "invldm.datasets")
     cls_name = args.dataset + "Dataset"
     try:
         cls = getattr(mod, cls_name)
