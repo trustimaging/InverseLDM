@@ -163,7 +163,7 @@ class CrossAttention(nn.Module):
         self.to_v = nn.Linear(d_cond, d_attn, bias=False)
 
         # Final linear layer
-        self.to_out = nn.Sequential(nn.Linear(d_attn, d_model))
+        self.to_out = nn.Linear(d_attn, d_model)
 
         # Setup [flash attention](https://github.com/HazyResearch/flash-attention).
         # Flash attention is only used if it's installed
