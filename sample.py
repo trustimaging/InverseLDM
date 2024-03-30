@@ -1,6 +1,6 @@
 
-from utils.setup import setup_sampling
-from runners.sampler import Sampler
+from invldm.utils.setup import setup_sampling
+from invldm.runners.sampler import Sampler
 
 if __name__ == "__main__":
     # Gather arguments from CL and from YAML config file,

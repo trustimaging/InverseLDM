@@ -1,5 +1,4 @@
 import os
-
 from . import BaseLogger
 import torch.utils.tensorboard as tb
 

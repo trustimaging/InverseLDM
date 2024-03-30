@@ -3,7 +3,7 @@ from abc import abstractmethod
 from torch.utils.data import Dataset
 from torchvision.transforms import Compose, Resize, Lambda, ToTensor, Normalize
 
-from utils.utils import scale2range, clip_outliers, namespace2dict
+from ..utils.utils import scale2range, clip_outliers, namespace2dict
 
 
 class BaseDataset(Dataset):

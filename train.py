@@ -1,6 +1,6 @@
 
-from utils.setup import setup_train
-from runners.trainer import Trainer
+from invldm.utils.setup import setup_train
+from invldm.runners.trainer import Trainer
 
 if __name__ == "__main__":
     # Gather arguments from CL and from YAML config file,
