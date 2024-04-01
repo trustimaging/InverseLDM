@@ -4,9 +4,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+from ..utils.utils import scale2range
+
 from .diffusion_model import DiffusionWrapper
 from .autoencoder_model import AutoencoderWrapper, GaussianDistribution
-from .losses import divergence, perceptual, reconstruction
+from .losses import _divergence_fn, _perceptual_fn, _reconstruction_fn
 
 
 def _instance_autoencoder_model(args, device="cpu"):
@@ -69,13 +71,29 @@ def _instance_lr_scheduler(args, optimiser):
 
 
 def _instance_autoencoder_loss_fn(args):
+    # Get correct loss functions from args
+    div_fn = _divergence_fn(args)
+    recon_fn = _reconstruction_fn(args)
+    percep_fn = _perceptual_fn(args)
+
+    # Function to combine all losses with their respective weights 
     def autoencoder_loss_fn(input: torch.Tensor,
                             recon: torch.Tensor,
                             mean: torch.Tensor,
                             log_var: torch.Tensor) -> torch.Tensor:
-        loss_div = divergence(args, mean, log_var).mean()
-        loss_recon = reconstruction(args, input, recon).mean()
-        loss_percep = perceptual(args, input, recon).mean()
+        
+        # Evaluate divergence and reconstruction loss functions
+        loss_div = div_fn(mean, log_var).mean()
+        loss_recon = recon_fn(input, recon).mean()
+
+        # LPIPS loss requires inputs in range [-1, 1]
+        if args.model.perceptual_loss == "lpips":
+            input, recon = scale2range(input, [-1, 1]), scale2range(recon, [-1, 1])
+        
+        # Evaluate perceptual loss
+        loss_percep = percep_fn.to(input.device)(input, recon).mean()
+
+        # Combine losses
         loss = args.params.recon_weight * loss_recon + \
             args.params.div_weight * loss_div + \
             args.params.perceptual_weight * loss_percep
@@ -84,20 +102,8 @@ def _instance_autoencoder_loss_fn(args):
 
 
 def _instance_diffusion_loss_fn(args):
-    def diffusion_loss_fn(target: torch.Tensor,
-                          pred: torch.Tensor) -> torch.Tensor:
-        loss = reconstruction(args, target, pred)
-        return loss
+    diffusion_loss_fn = _reconstruction_fn(args)    
     return diffusion_loss_fn
-
-
-class DataParallelCPU(nn.Module):
-    def __init__(self, module, **kwargs):
-        super().__init__()
-        self.module = module
-
-    def forward(self, *inputs, **kwargs):
-        return self.module(*inputs, **kwargs)
 
 
 def data_parallel_wrapper(module, device, **kwargs): 
@@ -108,15 +114,12 @@ def data_parallel_wrapper(module, device, **kwargs):
         return DataParallelCPU(module)
     else:
         return nn.DataParallel(module, **kwargs)
+    
 
-        
-        
+class DataParallelCPU(nn.Module):
+    def __init__(self, module, **kwargs):
+        super().__init__()
+        self.module = module
 
-# def _instance_diffusion_sampler(ldm, args):
-#     if args.params.sampler.lower() == "ddim":
-#         return DDIMSampler(model=ldm,
-#                            n_steps=args.params.num_diffusion_timesteps,
-#                            ddim_discretize="uniform",
-#                            ddim_eta=0.)
-#     else:
-#         raise NotImplementedError(f"{args.params.sampler} not implemented.")
+    def forward(self, *inputs, **kwargs):
+        return self.module(*inputs, **kwargs)
