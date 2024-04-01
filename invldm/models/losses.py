@@ -23,7 +23,7 @@ def laplacian2D(mesh, alpha=-0.2, beta=1.5):
 
 
 def _divergence_fn(args):
-    if not args.model.div_loss:
+    if not args.model.div_loss or args.params.div_weight<=0:
         return null_fn
     
     elif args.model.div_loss.lower() == "kl":
@@ -36,7 +36,7 @@ def _divergence_fn(args):
 
 
 def _perceptual_fn(args):
-    if not args.model.perceptual_loss:
+    if not args.model.perceptual_loss or args.params.perceptual_weight<=0:
         return null_fn
     
     elif args.model.perceptual_loss == "wiener":
@@ -77,5 +77,21 @@ def _reconstruction_fn(args):
     else:
         raise NotImplementedError(
             "Currently only supporting the L1 and L2 reconstruction losses"
+        )
+
+
+def _adversarial_fn(args):
+    if not args.params.adversarial_mode or args.params.adversarial_weight<=0:
+        return null_fn
+    
+    elif args.params.adversarial_mode == "vanilla":
+        return F.mse_loss
+
+    elif args.params.adversarial_mode == "lsgan":
+        return F.binary_cross_entropy_with_logits
+
+    else:
+        raise NotImplementedError(
+            f"Currently only supporting 'vanilla' and 'lsgan' adversarial modes but got {args.params.adversarial_mode}."
         )
 

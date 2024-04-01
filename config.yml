@@ -4,19 +4,19 @@ data:
     mode: vp
     maxsamples: null
     slowness: false
-    resize: 64
+    resize: [64, 64]
     scale: [0, 1.]
     clip_outliers: outer
     to_tensor: false
     normalise: false
-    condition:
-        mode: stack
-        path: "/home/dp4018/scripts/pids/processed/skull_start/"    
-        resize: 64
-        scale: [0., 1.]
-        clip_outliers: outer
-        to_tensor: false
-        normalise: false
+    # condition:
+    #     mode: stack-latent
+    #     path: "/home/dp4018/data/ultrasound-data/Ultrasound-Vp-sagittal-data/acoustic/data/stack_latent/data_03"    
+    #     resize: null
+    #     scale: [0., 1.]
+    #     clip_outliers: null
+    #     to_tensor: false
+    #     normalise: false
 
 logging:
     tool: tensorboard
@@ -32,20 +32,30 @@ autoencoder:
         num_res_blocks: 2
         recon_loss: l2
         div_loss: kl
-        perceptual_loss: null
-        checkpoint: "/home/dp4018/scripts/InverseLDM/exps/autoencoder_pinaya/logs/autoencoder/checkpoints/autoencoder_ckpt_epoch_300_step_15000.pth"
+        perceptual_loss: lpips
+        adversarial_loss: true
+        # checkpoint: "/home/dp4018/scripts/InverseLDM/exps/autoencoders/autoencoder_pinaya/logs/autoencoder/checkpoints/autoencoder_ckpt_epoch_300_step_15000.pth"
 
     params:
         div_weight: 0.00001
-        perceptual_weight: 0.0
+        perceptual_weight: 1.0
         recon_weight: 1.
+        adversarial_weight: 0.1
+        wiener_epsilon: 250.
+        wiener_alpha: -0.01
+        wiener_beta: 3.5
+        wiener_filter_scale: 2
+        lpips_model: alex
+        disc_n_layers: 3
+        disc_feature_channels: 32
+        adversarial_mode: lsgan
         
     training:
         batch_size: 16
         n_epochs: 300
         save_recon_freq: 500
         ckpt_freq: 500
-        ckpt_last_only: false
+        ckpt_last_only: true
         num_workers: 4
         sampling_freq: 500
 
@@ -90,7 +100,7 @@ diffusion:
 
     training:
         batch_size: 8
-        n_epochs: 200
+        n_epochs: 0 #200
         ckpt_freq: 100
         ckpt_last_only: true
         sampling_freq: 500
@@ -106,7 +116,7 @@ diffusion:
         num_workers: 4
         
     sampling:
-        batch_size: 2
+        batch_size: 4
         output: last_only
         n_samples: 10
 

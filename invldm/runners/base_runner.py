@@ -80,6 +80,12 @@ class BaseRunner(ABC):
                 "epoch": self.epoch,
                 "step": self.steps,
             }
+        if self.args.name.lower() == "autoencoder" and self.args.model.adversarial_loss:
+            states.update({
+                "d_model_state_dict": self.d_model.state_dict(),
+                "d_optimiser_state_dict": self.d_optimiser.state_dict(),
+                "d_lr_scheduler": self.d_lr_scheduler,
+            })
         if not path:
             latest_ckpt_name = f"{self.args.name.lower()}_ckpt_latest.pth"
             path = os.path.join(self.args.ckpt_path, latest_ckpt_name)
@@ -120,12 +126,20 @@ class BaseRunner(ABC):
             states = torch.load(path, map_location="cpu")
         
         self.model.load_state_dict(states["model_state_dict"])
+
+        if self.args.name == "autoencoder" and self.args.model.adversarial_loss:
+            self.d_model.load_state_dict(states["d_model_state_dict"])
         
         if not model_only:
             self.optimiser.load_state_dict(states["optimiser_state_dict"])
             self.lr_scheduler = states["lr_scheduler"]
             self.epoch = states["epoch"]
             self.steps = states["step"]
+
+            if self.args.name.lower() == "autoencoder" and self.args.model.adversarial_loss:
+                self.d_optimiser.load_state_dict(states["d_optimiser_state_dict"])
+                self.d_lr_scheduler = states["d_lr_scheduler"]
+
 
         logging.info(f"{self.args.name.lower().capitalize()} checkpoint successfully loaded.")
         return None
@@ -287,6 +301,15 @@ class BaseRunner(ABC):
                                     val=torch.tensor(self.lr_scheduler.get_last_lr()).mean().item(),
                                     step=self.steps
                                 )
+                            if "loss_d" in output.keys():
+                                loss_d = output["loss_d"]
+                                logger.log_scalar(
+                                    tag=f"{self.args.name.lower()}_discriminator_training_loss",
+                                    val=loss_d.item(),
+                                    step=self.steps
+                                )
+                                logging.info(f"{self.args.name.lower().capitalize()} Epoch {self.epoch} Step {self.steps} Discriminator Training Loss: {loss_d.item()} {self.eta(start_time)}")
+
 
                         # Save training recon fig
                         try:
@@ -408,6 +431,13 @@ class BaseRunner(ABC):
                                         hparam_dict=self.hparam_dict,
                                         metric_dict={'hparam/valid_loss': val_loss.item()}
                                     )
+                                    if "loss_d" in output.keys():
+                                        logger.log_scalar(
+                                            tag=f"{self.args.name.lower()}_discriminator_valid_loss",
+                                            val=output["loss_d"].item(),
+                                            step=self.steps
+                                        )
+                                        logging.info(f"{self.args.name.lower().capitalize()} Epoch {self.epoch} Step {self.steps} Discriminator Validation Loss: {loss_d.item()} {self.eta(start_time)}")
 
                                 # Save validation recon figure
                                 if valid_save_recon_freq:
