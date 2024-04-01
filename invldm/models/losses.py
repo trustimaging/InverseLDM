@@ -59,7 +59,7 @@ def _perceptual_fn(args):
 
     else:
         raise NotImplementedError(
-            "Currently not supporting perceptual losses"
+            f"Currently only supporting 'wiener' and 'lpips' as perceptual loss but got {args.model.perceptual_loss}"
         )
 
 
