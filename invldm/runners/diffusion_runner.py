@@ -90,7 +90,7 @@ class DiffusionRunner(BaseRunner):
         cond = kwargs.pop("condition", None)
 
         # One autoencoder forward pass to get shape of latent space -- can be optimised!
-        z = self.model.module.ldm.autoencoder_encode(input)
+        z = self.model.module.ldm.autoencoder_encode(input, cond)
 
         # Sample latent space with diffusion model
         z_sample = self.model.module.sampler.sample(
@@ -102,5 +102,5 @@ class DiffusionRunner(BaseRunner):
         )
 
         # Decode to reconstruct data
-        sample = self.model.module.ldm.autoencoder_decode(z_sample)
+        sample = self.model.module.ldm.autoencoder_decode(z_sample, cond)
         return sample, z

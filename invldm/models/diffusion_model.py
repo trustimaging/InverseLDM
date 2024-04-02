@@ -101,7 +101,7 @@ class DiffusionWrapper(nn.Module):
         t = torch.randint(0, self.ldm.n_steps, (batch_size,), device=x.device, dtype=torch.long)
 
         # Encode x to latent 
-        z0 = self.ldm.autoencoder_encode(x)
+        z0 = self.ldm.autoencoder_encode(x, condition)
 
         # $\epsilon \sim \mathcal{N}(\mathbf{0}, \mathbf{I})$
         if noise is None:
@@ -149,8 +149,7 @@ class LatentDiffusion(nn.Module):
         # Auto-encoder and scaling factor
         self.first_stage_model = autoencoder
         self.latent_scaling_factor = latent_scaling_factor
-        # [CLIP embeddings generator](model/clip_embedder.html)
-        self.cond_stage_model = None
+
 
         # Number of steps $T$
         self.n_steps = n_steps
@@ -171,29 +170,23 @@ class LatentDiffusion(nn.Module):
         """
         return next(iter(self.unet_model.parameters())).device
 
-    def get_text_conditioning(self, prompts: List[str]):
-        """
-        ### Get [CLIP embeddings](model/clip_embedder.html) for a list of text prompts
-        """
-        return self.cond_stage_model(prompts)
-
-    def autoencoder_encode(self, image: torch.Tensor):
+    def autoencoder_encode(self, image: torch.Tensor, condition: Optional[torch.Tensor] = None):
         """
         ### Get scaled latent space representation of the image
 
         The encoder output is a distribution.
         We sample from that and multiply by the scaling factor.
         """
-        _, _ = self.first_stage_model.encode(image)
+        _, _ = self.first_stage_model.encode(image, condition)
         return self.latent_scaling_factor * self.first_stage_model.sample()
 
-    def autoencoder_decode(self, z: torch.Tensor):
+    def autoencoder_decode(self, z: torch.Tensor, condition: Optional[torch.Tensor] = None):
         """
         ### Get image from the latent representation
 
         We scale down by the scaling factor and then decode.
         """
-        return self.first_stage_model.decode(z / self.latent_scaling_factor)
+        return self.first_stage_model.decode(z / self.latent_scaling_factor, condition)
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, c: Optional[torch.Tensor] = None):
         """
