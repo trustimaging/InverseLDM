@@ -9,14 +9,14 @@ data:
     clip_outliers: outer
     to_tensor: false
     normalise: false
-    # condition:
-    #     mode: stack-latent
-    #     path: "/home/dp4018/data/ultrasound-data/Ultrasound-Vp-sagittal-data/acoustic/data/stack_latent/data_03"    
-    #     resize: null
-    #     scale: [0., 1.]
-    #     clip_outliers: null
-    #     to_tensor: false
-    #     normalise: false
+    condition:
+        mode: stack-latent
+        path: "/home/dp4018/data/ultrasound-data/Ultrasound-Vp-sagittal-data/acoustic/data/stack_latent/data_03"    
+        resize: null
+        scale: [0., 1.]
+        clip_outliers: null
+        to_tensor: false
+        normalise: false
 
 logging:
     tool: tensorboard
@@ -35,18 +35,16 @@ autoencoder:
         perceptual_loss: lpips
         adversarial_loss: true
         # checkpoint: "/home/dp4018/scripts/InverseLDM/exps/autoencoders/autoencoder_pinaya/logs/autoencoder/checkpoints/autoencoder_ckpt_epoch_300_step_15000.pth"
-
+        condition:
+            in_channels: 1
+            feature_channels: 16
     params:
         div_weight: 0.00001
         perceptual_weight: 1.0
         recon_weight: 1.
         adversarial_weight: 0.1
-        wiener_epsilon: 250.
-        wiener_alpha: -0.01
-        wiener_beta: 3.5
-        wiener_filter_scale: 2
         lpips_model: alex
-        disc_n_layers: 3
+        disc_n_layers: 2
         disc_feature_channels: 32
         adversarial_mode: lsgan
         
@@ -57,7 +55,7 @@ autoencoder:
         ckpt_freq: 500
         ckpt_last_only: true
         num_workers: 4
-        sampling_freq: 500
+        sampling_freq: 0
 
     validation:
         split: 0.2
