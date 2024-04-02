@@ -37,8 +37,11 @@ class AutoencoderRunner(BaseRunner):
                 self.d_loss_fn = _instance_discriminator_loss_fn(self.args)
 
     def train_step(self, input, **kwargs):
+        # Get condition from kwargs
+        cond = kwargs.pop("condition", None)
+
         # Forward pass: recon and the statistical posterior
-        recon, mean, log_var = self.model(input)
+        recon, mean, log_var = self.model(input, cond)
 
         # Compute training loss
         loss = self.loss_fn(input, recon, mean, log_var)

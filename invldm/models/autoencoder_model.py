@@ -23,7 +23,7 @@ We have kept to the model definition and naming unchanged from
 so that we can load the checkpoints directly.
 """
 
-from typing import List
+from typing import List, Optional
 
 import torch
 import torch.nn.functional as F
@@ -42,6 +42,7 @@ class AutoencoderWrapper(nn.Module):
             n_resnet_blocks=args.model.num_res_blocks,
             in_channels=args.model.in_channels,
             z_channels=args.model.z_channels,
+            cond_channels=args.model.condition.feature_channels,
         )
 
         self.decoder = Decoder(
@@ -50,13 +51,16 @@ class AutoencoderWrapper(nn.Module):
             n_resnet_blocks=args.model.num_res_blocks,
             out_channels=args.model.out_channels,
             z_channels=args.model.z_channels,
+            cond_channels=args.model.condition.feature_channels,
         )
 
         self.model = Autoencoder(
             encoder=self.encoder,
             decoder=self.decoder,
             emb_channels=args.model.embbeded_channels,
-            z_channels=args.model.z_channels
+            z_channels=args.model.z_channels,
+            cond_in_channels=args.model.condition.in_channels,
+            cond_feature_channels = args.model.condition.feature_channels,
         ).to(device)
 
     @property
@@ -66,10 +70,10 @@ class AutoencoderWrapper(nn.Module):
         """
         return next(iter(self.encoder.parameters())).device
 
-    def forward(self, input: torch.Tensor):
-        mean, log_var = self.model.encode(input)
+    def forward(self, input: torch.Tensor, condition: Optional[torch.Tensor] = None):
+        mean, log_var = self.model.encode(input, condition)
         z = self.model.sample()
-        recon = self.model.decode(z)
+        recon = self.model.decode(z, condition)
         return recon, mean, log_var
 
 
@@ -80,7 +84,8 @@ class Autoencoder(nn.Module):
     This consists of the encoder and decoder modules.
     """
 
-    def __init__(self, encoder: 'Encoder', decoder: 'Decoder', emb_channels: int, z_channels: int):
+    def __init__(self, encoder: 'Encoder', decoder: 'Decoder', emb_channels: int, z_channels: int,
+                 cond_in_channels: int = 1, cond_feature_channels: int = 32):
         """
         :param encoder: is the encoder
         :param decoder: is the decoder
@@ -92,25 +97,37 @@ class Autoencoder(nn.Module):
         self.decoder = decoder
         self.emb_channels = emb_channels
         self.z_channels = z_channels
+        
         # Convolution to map from embedding space to
         # quantized embedding space moments (mean and log variance)
         self.quant_conv = nn.Conv2d(2 * z_channels, 2 * emb_channels, 1)
+        
         # Convolution to map from quantized embedding space back to
         # embedding space
         self.post_quant_conv = nn.Conv2d(emb_channels, z_channels, 1)
 
+        # Convolution to map condition to its feature map
+        self.cond_embed = nn.Conv2d(cond_in_channels, cond_feature_channels, kernel_size=1, stride=1, padding=0)
+
+        # Variational variables to store
         self.mean = None
         self.log_var = None
         self.std = None
 
-    def encode(self, img: torch.Tensor) -> List[torch.Tensor]:
+    def encode(self, img: torch.Tensor, condition: Optional[torch.Tensor] = None) -> List[torch.Tensor]:
         """
         ### Encode images to latent representation
 
         :param img: is the image tensor with shape `[batch_size, img_channels, img_height, img_width]`
         """
+        # Embed condition if passed
+        if condition is not None:
+            condition = self.cond_embed(condition)
+            condition = swish(condition)
+
         # Get embeddings with shape `[batch_size, z_channels * 2, z_height, z_height]`
-        z = self.encoder(img)
+        z = self.encoder(img, condition)
+        
         # Get the moments in the quantized embedding space
         moments = self.quant_conv(z)
 
@@ -123,16 +140,21 @@ class Autoencoder(nn.Module):
 
         return [self.mean, self.log_var]
 
-    def decode(self, z: torch.Tensor) -> torch.Tensor:
+    def decode(self, z: torch.Tensor, condition: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         ### Decode images from latent representation
 
         :param z: is the latent representation with shape `[batch_size, emb_channels, z_height, z_height]`
         """
+        # Embed condition if passed
+        if condition is not None:
+            condition = self.cond_embed(condition)
+            condition = swish(condition)
+
         # Map to embedding space from the quantized representation
         z = self.post_quant_conv(z)
         # Decode the image of shape `[batch_size, channels, height, width]`
-        return self.decoder(z)
+        return self.decoder(z, condition)
     
     def sample(self) -> torch.Tensor:
         # Sample from the distribution
@@ -156,7 +178,7 @@ class Encoder(nn.Module):
     """
 
     def __init__(self, *, channels: int, channel_multipliers: List[int], n_resnet_blocks: int,
-                 in_channels: int, z_channels: int):
+                 in_channels: int, z_channels: int, cond_channels: int = 32):
         """
         :param channels: is the number of channels in the first convolution layer
         :param channel_multipliers: are the multiplicative factors for the number of channels in the
@@ -185,7 +207,7 @@ class Encoder(nn.Module):
             resnet_blocks = nn.ModuleList()
             # Add ResNet Blocks
             for _ in range(n_resnet_blocks):
-                resnet_blocks.append(ResnetBlock(channels, channels_list[i + 1]))
+                resnet_blocks.append(ResnetBlock(channels, channels_list[i + 1], cond_channels))
                 channels = channels_list[i + 1]
             # Top-level block
             down = nn.Module()
@@ -200,15 +222,15 @@ class Encoder(nn.Module):
 
         # Final ResNet blocks with attention
         self.mid = nn.Module()
-        self.mid.block_1 = ResnetBlock(channels, channels)
+        self.mid.block_1 = ResnetBlock(channels, channels, cond_channels)
         self.mid.attn_1 = AttnBlock(channels)
-        self.mid.block_2 = ResnetBlock(channels, channels)
+        self.mid.block_2 = ResnetBlock(channels, channels, cond_channels)
 
         # Map to embedding space with a $3 \times 3$ convolution
         self.norm_out = normalization(channels)
         self.conv_out = nn.Conv2d(channels, 2 * z_channels, 3, stride=1, padding=1)
 
-    def forward(self, img: torch.Tensor):
+    def forward(self, img: torch.Tensor, condition: Optional[torch.Tensor] = None):
         """
         :param img: is the image tensor with shape `[batch_size, img_channels, img_height, img_width]`
         """
@@ -220,14 +242,17 @@ class Encoder(nn.Module):
         for down in self.down:
             # ResNet Blocks
             for block in down.block:
-                x = block(x)
+                if isinstance(block, ResnetBlock):
+                    x = block(x, condition)
+                else:
+                    x = block(x)
             # Down-sampling
             x = down.downsample(x)
 
         # Final ResNet blocks with attention
-        x = self.mid.block_1(x)
+        x = self.mid.block_1(x, condition)
         x = self.mid.attn_1(x)
-        x = self.mid.block_2(x)
+        x = self.mid.block_2(x, condition)
 
         # Normalize and map to embedding space
         x = self.norm_out(x)
@@ -243,7 +268,7 @@ class Decoder(nn.Module):
     """
 
     def __init__(self, *, channels: int, channel_multipliers: List[int], n_resnet_blocks: int,
-                 out_channels: int, z_channels: int):
+                 out_channels: int, z_channels: int, cond_channels: int = 32):
         """
         :param channels: is the number of channels in the final convolution layer
         :param channel_multipliers: are the multiplicative factors for the number of channels in the
@@ -269,9 +294,9 @@ class Decoder(nn.Module):
 
         # ResNet blocks with attention
         self.mid = nn.Module()
-        self.mid.block_1 = ResnetBlock(channels, channels)
+        self.mid.block_1 = ResnetBlock(channels, channels, cond_channels)
         self.mid.attn_1 = AttnBlock(channels)
-        self.mid.block_2 = ResnetBlock(channels, channels)
+        self.mid.block_2 = ResnetBlock(channels, channels, cond_channels)
 
         # List of top-level blocks
         self.up = nn.ModuleList()
@@ -281,7 +306,7 @@ class Decoder(nn.Module):
             resnet_blocks = nn.ModuleList()
             # Add ResNet Blocks
             for _ in range(n_resnet_blocks + 1):
-                resnet_blocks.append(ResnetBlock(channels, channels_list[i]))
+                resnet_blocks.append(ResnetBlock(channels, channels_list[i], cond_channels))
                 channels = channels_list[i]
             # Top-level block
             up = nn.Module()
@@ -298,7 +323,7 @@ class Decoder(nn.Module):
         self.norm_out = normalization(channels)
         self.conv_out = nn.Conv2d(channels, out_channels, 3, stride=1, padding=1)
 
-    def forward(self, z: torch.Tensor):
+    def forward(self, z: torch.Tensor, condition: Optional[torch.Tensor] = None):
         """
         :param z: is the embedding tensor with shape `[batch_size, z_channels, z_height, z_height]`
         """
@@ -307,15 +332,18 @@ class Decoder(nn.Module):
         h = self.conv_in(z)
 
         # ResNet blocks with attention
-        h = self.mid.block_1(h)
+        h = self.mid.block_1(h, condition)
         h = self.mid.attn_1(h)
-        h = self.mid.block_2(h)
+        h = self.mid.block_2(h, condition)
 
         # Top-level blocks
         for up in reversed(self.up):
             # ResNet Blocks
             for block in up.block:
-                h = block(h)
+                if isinstance(block, ResnetBlock):
+                    h = block(h, condition)
+                else:
+                    h = block(h)
             # Up-sampling
             h = up.upsample(h)
 
@@ -324,7 +352,6 @@ class Decoder(nn.Module):
         h = swish(h)
         img = torch.sigmoid(self.conv_out(h))
 
-        #
         return img
 
 
@@ -454,11 +481,23 @@ class DownSample(nn.Module):
         return self.conv(x)
 
 
+class Interpolate(nn.Module):
+    def __init__(self, **kwargs):
+        super(Interpolate, self).__init__()
+        self.interp = nn.functional.interpolate
+
+        kwargs.pop("size", None)
+        self.kwargs = kwargs
+        
+    def forward(self, x, size):
+        return self.interp(x, size=size, **self.kwargs)
+    
+
 class ResnetBlock(nn.Module):
     """
     ## ResNet Block
     """
-    def __init__(self, in_channels: int, out_channels: int):
+    def __init__(self, in_channels: int, out_channels: int, cond_channels: Optional[torch.Tensor] = None):
         """
         :param in_channels: is the number of channels in the input
         :param out_channels: is the number of channels in the output
@@ -467,21 +506,33 @@ class ResnetBlock(nn.Module):
         # First normalization and convolution layer
         self.norm1 = normalization(in_channels)
         self.conv1 = nn.Conv2d(in_channels, out_channels, 3, stride=1, padding=1)
+
         # Second normalization and convolution layer
         self.norm2 = normalization(out_channels)
         self.conv2 = nn.Conv2d(out_channels, out_channels, 3, stride=1, padding=1)
+
+        # Condition embedding and interpolator to input space
+        if cond_channels is not None:
+            self.cond_emb = nn.Conv2d(cond_channels, in_channels, kernel_size=1)
+            self.interpolator = Interpolate(mode="nearest")
+
         # `in_channels` to `out_channels` mapping layer for residual connection
         if in_channels != out_channels:
             self.nin_shortcut = nn.Conv2d(in_channels, out_channels, 1, stride=1, padding=0)
         else:
             self.nin_shortcut = nn.Identity()
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, condition: Optional[torch.Tensor] = None):
         """
         :param x: is the input feature map with shape `[batch_size, channels, height, width]`
         """
-
-        h = x
+        # Add condition to input if passed
+        if condition is not None:
+            c = self.cond_emb(swish(condition))
+            c = self.interpolator(c, x.shape[-2:])
+            h = x + c
+        else:
+            h = x
 
         # First normalization and convolution layer
         h = self.norm1(h)

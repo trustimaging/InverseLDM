@@ -31,6 +31,9 @@ autoencoder:
         perceptual_loss: lpips
         adversarial_loss: true
         checkpoint: null
+        condition:
+            in_channels: 1
+            feature_channels: 16
 
     params:
         div_weight: 0.001
@@ -94,7 +97,7 @@ diffusion:
         checkpoint: null
         condition:
             in_channels: 1
-            feature_channels: 98
+            feature_channels: 16
 
     params:
         beta_schedule: linear
