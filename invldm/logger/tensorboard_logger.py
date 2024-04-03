@@ -6,16 +6,14 @@ import torch.utils.tensorboard as tb
 class TensorboardLogger(BaseLogger):
     def __init__(self, args):
         super().__init__(args)
-        return None
 
-    def _make_logger(self):
-        logger = tb.SummaryWriter(
+        self.logger = tb.SummaryWriter(
             log_dir=os.path.join(
                 self.args.run.exp_folder,
                 "tensorboard"
             )
         )
-        return logger
+        return None
 
     def log_scalar(self, tag, val, step, **kwargs):
         self.logger.add_scalar(tag, val, step)
