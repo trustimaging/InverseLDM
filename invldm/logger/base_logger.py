@@ -3,11 +3,6 @@ from abc import abstractmethod
 class BaseLogger():
     def __init__(self, args):
         self.args = args
-        self.logger = self._make_logger()
-
-    @abstractmethod
-    def _make_logger(self):
-        raise NotImplementedError
 
     def log_scalar(self, tag, val, step, **kwargs):
         pass
@@ -20,5 +15,7 @@ class BaseLogger():
 
 
 class NullLogger(BaseLogger):
+    def __init__(self, args):
+        return None
     def _make_logger(self):
         return None
