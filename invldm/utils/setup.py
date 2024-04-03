@@ -148,7 +148,7 @@ def parse_args():
     parser.add_argument(
         "--jobid",
         type=int,
-        default="",
+        default=-1,
         help="Store job ID for hpc systems"
     )
     parser.add_argument(
