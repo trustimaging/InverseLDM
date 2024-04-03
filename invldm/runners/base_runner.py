@@ -5,6 +5,7 @@ import fnmatch
 import torch
 import numpy as np
 import logging
+import platform
 import matplotlib.pyplot as plt
 
 from abc import ABC, abstractmethod
@@ -64,11 +65,14 @@ class BaseRunner(ABC):
     def _update_hparam_dict(self) -> dict:
         hparam_dict = {
             "name": self.args.name,
-            "dataset": str(self.train_loader.dataset.dataset),
+            "dataset": self.train_loader.dataset.dataset.__dict__,
             "device": self.device,
-            "gpus": torch.cuda.get_device_name(self.device) if "cuda" in str(self.device) else None
+            "device_ids": self.model.device_ids,
+            "gpus": [torch.cuda.get_device_name(id) for id in self.model.device_ids],
+            "processor": platform.machine() + " " + platform.processor() + " " + platform.system(),
+            "seed": self.run_args.seed,
         }
-        hparam_dict.update(namespace2dict(self.args, flatten=True))
+        hparam_dict.update({"model": namespace2dict(self.args, flatten=True)})
         self.hparam_dict = hparam_dict
         return None
 
