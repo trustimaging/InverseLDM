@@ -143,7 +143,13 @@ def parse_args():
         "--comment",
         type=str,
         default="",
-        help="A string for experimentcomment"
+        help="A string for experiment comment"
+    )
+    parser.add_argument(
+        "--jobid",
+        type=int,
+        default="",
+        help="Store job ID for hpc systems"
     )
     parser.add_argument(
         "--device",
