@@ -8,7 +8,7 @@ def _instance_logger(args):
         # mod = __import__(f'.{args.logging.tool.lower()}_logger.py', fromlist=[args.logging.tool], globals=globals())
         # mod_name = f'.{args.logging.tool.lower()}_logger'
         mod = importlib.import_module(f'.{args.logging.tool.lower()}_logger', "invldm.logger")
-        cls_name = args.logging.tool.lower().capitalize() + "Logger"
+        cls_name = args.logging.tool + "Logger"
 
         
         try:
