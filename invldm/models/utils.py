@@ -132,7 +132,7 @@ def data_parallel_wrapper(module, device, **kwargs):
     """
     Ensures code consistency for DataParallel when cpu is used.
     """
-    if device == "cpu":
+    if str(device) == "cpu":
         return DataParallelCPU(module)
     else:
         return nn.DataParallel(module, **kwargs)
@@ -157,6 +157,7 @@ class DataParallelCPU(nn.Module):
     def __init__(self, module, **kwargs):
         super().__init__()
         self.module = module
+        self.device_ids = []
 
     def forward(self, *inputs, **kwargs):
         return self.module(*inputs, **kwargs)
