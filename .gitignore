@@ -2,3 +2,4 @@ exps/
 slurm*
 *.ipynb
 **/__pycache__/
+.vscode/
