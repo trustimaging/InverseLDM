@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import sys
 import logging
-# import ruamel.yaml as yaml
+
 from .utils import dict2namespace, namespcae_summary_ticket
 from ..logger.utils import _instance_logger
 
