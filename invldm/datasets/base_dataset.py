@@ -47,6 +47,7 @@ class BaseDataset(Dataset):
 
 class Scale(nn.Module):
     def __init__(self, scale):
+        super().__init__()
         self.scale = scale
 
     def forward(self, x):
@@ -59,6 +60,7 @@ class Scale(nn.Module):
 
 class ClipOutliers(nn.Module):
     def __init__(self, fence):
+        super().__init__()
         self.fence = fence
 
     def forward(self, x):
