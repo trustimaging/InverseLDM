@@ -1,5 +1,6 @@
 from abc import abstractmethod
 
+import torch.nn as nn
 from torch.utils.data import Dataset
 from torchvision.transforms import Compose, Resize, Lambda, ToTensor, Normalize
 
@@ -33,15 +34,36 @@ class BaseDataset(Dataset):
         if to_tensor:
             transform_list.append(ToTensor())
         if outliers:
-            transform_list.append(
-                lambda x: clip_outliers(x, outliers)
-            )
+            transform_list.append(ClipOutliers(fence=outliers))
         if scale:
             scale = scale
-            transform_list.append(Lambda(
-                lambda x: scale2range(x, [scale[0], scale[-1]])))
+            transform_list.append(Scale(scale=scale))
         if normalise:
             transform_list.append(Normalize(normalise[0],
                                             normalise[1]))
 
         return Compose(transform_list)
+    
+
+class Scale(nn.Module):
+    def __init__(self, scale):
+        self.scale = scale
+
+    def forward(self, x):
+        return scale2range(x, self.scale)
+    
+    def __repr__(self) -> str:
+        detail = f"(scale={self.scale})"
+        return f"{self.__class__.__name__}{detail}"
+    
+
+class ClipOutliers(nn.Module):
+    def __init__(self, fence):
+        self.fence = fence
+
+    def forward(self, x):
+        return clip_outliers(x, self.fence)
+    
+    def __repr__(self) -> str:
+        detail = f"(fence={self.fence})"
+        return f"{self.__class__.__name__}{detail}"
