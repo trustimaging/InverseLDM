@@ -7,7 +7,7 @@ def _instance_logger(args):
     if args.logging.tool is not None:
         # mod = __import__(f'.{args.logging.tool.lower()}_logger.py', fromlist=[args.logging.tool], globals=globals())
         # mod_name = f'.{args.logging.tool.lower()}_logger'
-        mod = importlib.import_module(f'.{args.logging.tool.lower()}_logger', "invldm.logger")
+        mod = importlib.import_module(f'.{args.logging.tool.lower()}_logger', "invldm.loggers")
         cls_name = args.logging.tool + "Logger"
 
         

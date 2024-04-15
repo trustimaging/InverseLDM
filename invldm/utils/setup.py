@@ -9,7 +9,7 @@ import sys
 import logging
 
 from .utils import dict2namespace, namespcae_summary_ticket
-from ..logger.utils import _instance_logger
+from ..loggers.utils import _instance_logger
 
 
 def setup_train():
@@ -264,7 +264,7 @@ def check_devices(args):
 def check_tracking_tool(args):
     if args.logging.tool:
         track_file = os.path.abspath(os.path.join(os.path.dirname(__file__),
-                                                  '..', "logger", args.logging.tool.lower() + "_logger.py"))
+                                                  '..', "loggers", args.logging.tool.lower() + "_logger.py"))
         try:
             open(track_file, "r")
         except FileNotFoundError:

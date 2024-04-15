@@ -38,9 +38,8 @@ class JSONLogger(BaseLogger):
         return None
 
     def log_hparams(self, hparam_dict, metric_dict, **kwargs):
-        hparam_dict.update(metric_dict)
+        # hparam_dict.update(metric_dict)
         self.hparams.update(clear_dic_for_json(hparam_dict))
-        # self.metrics.update(clear_dic_for_json(metric_dict))
         self.save_logger()
         return None
     
