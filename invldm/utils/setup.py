@@ -211,7 +211,11 @@ def parse_config(config_file):
     except yaml.constructor.ConstructorError:
         logging.warn(f"Loading {config_file} unsafely with YML.")
         with open(config_file, "r") as f:
-            config = dict2namespace(yaml.safe_load(f))
+            config = yaml.unsafe_load(f)
+        try:
+            config = dict2namespace(config)
+        except AttributeError:
+            pass
     
     return config
 
