@@ -178,7 +178,7 @@ class CrossAttention(nn.Module):
         v = self.to_v(cond)
 
         with torch.backends.cuda.sdp_kernel(enable_flash=True, enable_math=False, enable_mem_efficient=False):
-            attn, _ = self.multihead_attention(q, k, v)
+            attn, _ = self.multihead_attention(q, k, v, need_weights=False)
         return self.to_out(attn)
 
 
