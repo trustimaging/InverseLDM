@@ -1,17 +1,17 @@
 data:
     dataset: Brain2D
-    data_path: /home/dp4018/data/ultrasound-data/Ultrasound-Vp-sagittal-models/
+    data_path: /raid/dp4018/data/ultrasound-data/Ultrasound-Vp-sagittal-models/
     mode: vp
     maxsamples: null
     slowness: false
-    resize: [64, 64]
+    resize: [256, 256]
     scale: [0, 1.]
     clip_outliers: outer
     to_tensor: false
     normalise: false
     condition:
-        mode: stack-pca
-        path: "/home/dp4018/data/ultrasound-data/Ultrasound-Vp-sagittal-data/acoustic/data/stack_pca/data"    
+        mode: stack-trace-pca-100x100
+        path: "/raid/dp4018/data/ultrasound-data/Ultrasound-Vp-sagittal-data/acoustic/data/stack_pca/data"    
         resize: null
         scale: [0., 1.]
         clip_outliers: null
@@ -34,10 +34,11 @@ autoencoder:
         div_loss: kl
         perceptual_loss: lpips
         adversarial_loss: true
-        checkpoint: "/home/dp4018/scripts/InverseLDM/exps/tests/flash_attention_stack_pca_16x16_cond/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth"
+        checkpoint: null
+        # checkpoint: /raid/dp4018/scripts/InverseLDM/exps/autoencoders256/cond_vae_trace_pca100/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
         condition:
             in_channels: 1
-            feature_channels: 16
+            feature_channels: 32
     params:
         div_weight: 0.00001
         perceptual_weight: 1.0
@@ -54,15 +55,13 @@ autoencoder:
         save_recon_freq: 500
         ckpt_freq: 500
         ckpt_last_only: true
-        num_workers: 4
         sampling_freq: 0
 
     validation:
         split: 0.2
         batch_size: 16
-        freq: 150
+        freq: 50
         save_recon_freq: 500
-        num_workers: 4
 
     optim:
         weight_decay: 0.00
@@ -104,17 +103,15 @@ diffusion:
         sampling_freq: 500
         sampling_temperature: 0.5
         sampling_skip_steps: 0
-        num_workers: 2 
 
     validation:
         split: 0.2
         batch_size: 8
         freq: 150
         sampling_freq: 500
-        num_workers: 2
         
     sampling:
-        batch_size: 4
+        batch_size: 8
         output: last_only
         n_samples: 10
 
