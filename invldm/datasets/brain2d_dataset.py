@@ -45,7 +45,7 @@ class Brain2DDataset(BaseDataset):
                    filename.lower().endswith(suffix):
                     self.data_paths.append(os.path.join(subdir, filename))
         self.data_paths = self.data_paths[:maxsamples]
-        assert len(self.data_paths) > 0, " Found no data samples to load"
+        assert len(self.data_paths) > 0, f" Found no data samples to load in {path} with prefix {prefix} and suffixes {suffix}"
         return None
     
     def _get_condition_path(self, data_path):
