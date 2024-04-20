@@ -393,12 +393,15 @@ class AttnBlock(nn.Module):
         super().__init__()
         # Group normalization
         self.norm = normalization(channels)
+
         # Query, key and value mappings
         self.q = nn.Conv2d(channels, channels, 1)
         self.k = nn.Conv2d(channels, channels, 1)
         self.v = nn.Conv2d(channels, channels, 1)
+
         # Final $1 \times 1$ convolution layer
         self.proj_out = nn.Conv2d(channels, channels, 1)
+        
         # Attention scaling factor
         self.scale = channels ** -0.5
 
