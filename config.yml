@@ -10,7 +10,7 @@ data:
     to_tensor: false
     normalise: false
     condition:
-        mode: stack-trace-pca-100x100
+        mode: stack-trace-pca-256x256
         path: "/raid/dp4018/data/ultrasound-data/Ultrasound-Vp-sagittal-data/acoustic/data/stack_pca/data"    
         resize: null
         scale: [0., 1.]
@@ -34,8 +34,7 @@ autoencoder:
         div_loss: kl
         perceptual_loss: lpips
         adversarial_loss: true
-        checkpoint: null
-        # checkpoint: /raid/dp4018/scripts/InverseLDM/exps/autoencoders256/cond_vae_trace_pca100/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
+        # checkpoint: /raid/dp4018/scripts/InverseLDM/exps/conditioned256/cond_vae_trace_pca100_2/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
         condition:
             in_channels: 1
             feature_channels: 32
@@ -82,11 +81,11 @@ diffusion:
         num_res_blocks: 2
         attention: [0, 1, 2]
         num_transformer_layers: 2
-        num_attn_heads: 4
+        num_attn_heads: 1
         loss: l2
         condition:
             in_channels: 1
-            feature_channels: 64
+            feature_channels: 128
 
     params:
         beta_start: 0.0015
