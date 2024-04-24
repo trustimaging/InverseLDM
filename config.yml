@@ -1,10 +1,10 @@
 data:
     dataset: Brain2D
-    data_path: /raid/dp4018/data/ultrasound-data/Ultrasound-Vp-sagittal-models/
+    data_path: /home/dp4018/data/ultrasound-data/Ultrasound-Vp-sagittal-models/
     mode: vp
     maxsamples: null
     slowness: false
-    resize: [256, 256]
+    resize: [128, 128]
     scale: [0, 1.]
     clip_outliers: outer
     to_tensor: false
@@ -51,7 +51,7 @@ autoencoder:
         adversarial_mode: lsgan
         
     training:
-        batch_size: 16
+        batch_size: 8
         n_epochs: 300
         save_recon_freq: 500
         ckpt_freq: 500
@@ -60,7 +60,7 @@ autoencoder:
 
     validation:
         split: 0.2
-        batch_size: 16
+        batch_size: 8
         freq: 50
         save_recon_freq: 500
 
@@ -108,11 +108,12 @@ diffusion:
     validation:
         split: 0.2
         batch_size: 4
+        batch_size: 4
         freq: 150
         sampling_freq: 5000
         
     sampling:
-        batch_size: 8
+        batch_size: 4
         output: last_only
         n_samples: 10
 
