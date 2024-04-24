@@ -20,6 +20,7 @@ data:
 
 logging:
     tool: JSON
+    tool: JSON
 
 autoencoder:
     model:
