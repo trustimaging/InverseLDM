@@ -5,7 +5,6 @@ from torchsummary import summary
 from .autoencoder_runner import AutoencoderRunner
 from .diffusion_runner import DiffusionRunner
 
-from ..seismic.utils import _instance_conditioner
 from ..datasets.utils import (_instance_dataset, _instance_dataloader,
                             _split_valid_dataset)
 

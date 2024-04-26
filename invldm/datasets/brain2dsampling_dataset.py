@@ -5,25 +5,14 @@ import torch
 from . import BaseDataset
 
 
-class Brain2DDataset(BaseDataset):
-    def __init__(self, args):
+class Brain2DSamplingDataset(BaseDataset):
+    def __init__(self, args,  **kwargs):
         BaseDataset.__init__(self, args)
 
-        assert not self.args.sampling_only, "Brain2DDataset is designed for training. Please see Brain2DSamplingDataset"
+        assert not self.args.sampling_only, "Brain2DSamplingDataset is designed for sampling. Please see Brain2DDataset"
 
         # Save args in object
         self.args = args
-
-        # Checking mode
-        try:
-            mode = self.args.mode
-            if mode.lower() in ["mri", "vp"]:
-                self.mode = mode
-            else:
-                raise ValueError("mode must be 'mri' or 'vp', \
-                                but got '{}'".format(mode))
-        except KeyError:
-            self.mode = "mri"
 
         # Check maxsamples
         try:
@@ -31,41 +20,26 @@ class Brain2DDataset(BaseDataset):
         except KeyError:
             maxsamples = None
 
-        # Get image paths
-        self.data_paths = []
-        self._get_image_paths(self.args.data_path, maxsamples)
+        self.n_samples = kwargs.pop("n_samples", 64)
+        self.cond_paths = []
+
+        if self.condition.mode:
+            prefix = self.args.condition.mode
+            self._get_image_paths(self.args.condition.path, prefix, maxsamples)
+
         return None
 
-    def _get_image_paths(self, path, maxsamples=None):
-        prefix = "m" if self.mode == "mri" else "vp"
+    def _get_image_paths(self, path, prefix="", maxsamples=None):
         suffix = (".npy", ".npy.gz")
-
         # Loop through folders and subfolders
         for subdir, _, files in os.walk(path):
             for filename in files:
                 if filename.lower().startswith(prefix) and \
                    filename.lower().endswith(suffix):
-                    self.data_paths.append(os.path.join(subdir, filename))
-        self.data_paths = self.data_paths[:maxsamples]
-        assert len(self.data_paths) > 0, f" Found no data samples to load in {path} with prefix {prefix} and suffixes {suffix}"
+                    self.cond_paths.append(os.path.join(subdir, filename))
+        self.cond_paths = self.cond_paths[:maxsamples]
+        assert len(self.cond_paths) > 0, f" Found no data samples to load in {path} with prefix {prefix} and suffixes {suffix}"
         return None
-    
-    def _get_condition_path(self, data_path):
-        """
-        Finds inside self.args.condition.path a .npy or .npy.gz file
-        containing the name of the data item of data_path with suffix '-self.args.condition.mode'
-        """
-
-        name = os.path.splitext(os.path.split(data_path)[-1])[0]
-
-        cond_path = os.path.join(self.args.condition.path, name + f"-{self.args.condition.mode}")
-
-        if os.path.isfile(cond_path + ".npy"):
-            return cond_path + ".npy"
-        elif os.path.isfile(cond_path + ".npy.gz"):
-            return cond_path + ".npy.gz"
-        else:
-            raise FileNotFoundError(f"Condition file {cond_path} does not exist in neither .npy or .npy.gz format")
 
     
     def _read_npy_data(self, data_path):
@@ -84,23 +58,16 @@ class Brain2DDataset(BaseDataset):
         return y
 
     def __getitem__(self, index):
-        # Data item path
-        y_path = self.data_paths[index]
-
-        # Read data
-        y = self._read_npy_data(y_path)
-
-        # slowness
-        if self.args.slowness:
-            y = 1./ y
-        
-        # Apply transform
-        if self.transform:
-            y = self.transform(y)
+        # Input for sampling
+        y = torch.rand((
+            self.args.sampling.in_channels,
+            self.args.sampling.in_size[0],
+            self.args.sampling.in_size[1]
+        ))
 
         # Get condition, apply steps above
         if self.args.condition.mode is not None and self.args.condition.path is not None:
-            cond_path = self._get_condition_path(y_path)
+            cond_path = self.cond_paths[index]
             cond = self._read_npy_data(cond_path)
             cond = cond / torch.abs(torch.max(cond))
             if self.cond_transform:
@@ -108,14 +75,18 @@ class Brain2DDataset(BaseDataset):
             return y, cond
         return y
 
+
     def __len__(self):
-        return len(self.data_paths)
+        if self.args.condition.mode:
+            return len(self.cond_paths)
+        else:
+            return self.n_samples
 
     def __str__(self):
         dic = {}
         dic["name"] = self.__class__.__name__
         dic.update(self.__dict__)
-        dic.pop("data_paths")
+        dic.pop("cond_paths")
         dic["len"] = self.__len__()
         return "{}".format(dic)
 

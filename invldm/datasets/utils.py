@@ -9,37 +9,40 @@ from torch.utils.data import DataLoader, Subset, TensorDataset
 from .base_dataset import BaseDataset
 
 
-def _instance_dataset(args):
-    # mod = __import__(f'datasets.{args.dataset.lower()}_dataset',
-    #                  fromlist=[args.dataset])
-    
-    mod = importlib.import_module(f'.{args.dataset.lower()}_dataset', "invldm.datasets")
-    cls_name = args.dataset + "Dataset"
-    try:
-        cls = getattr(mod, cls_name)
-    except AttributeError as e:
-        logging.warn(f'Expecting {args.dataset.lower()}_dataset.py to'
-                     f'contain a dataset class named {cls_name} derived'
-                     f'from the BaseDataset class')
-        raise (AttributeError, e)
-    assert (issubclass(cls, BaseDataset))
-    dataset = cls(args)
-    return dataset
+def _instance_dataset(args, **kwargs):
+    if hasattr(args, "dataset"):
+        mod = importlib.import_module(f'.{args.dataset.lower()}_dataset', "invldm.datasets")
+        cls_name = args.dataset + "Dataset"
+        try:
+            cls = getattr(mod, cls_name)
+        except AttributeError as e:
+            logging.warn(f'Expecting {args.dataset.lower()}_dataset.py to'
+                        f'contain a dataset class named {cls_name} derived'
+                        f'from the BaseDataset class')
+            raise (AttributeError, e)
+        assert (issubclass(cls, BaseDataset))
+        dataset = cls(args, **kwargs)
+        return dataset
+    else:
+        from ..datasets.random_dataset import RandomDataset
+        n_samples = kwargs.pop("n_samples", 64)
+        return RandomDataset(args, n_samples=n_samples, **kwargs)
+        
 
-
-def _instance_dataloader(args, dataset):
+def _instance_dataloader(args, dataset, **kwargs):
     if dataset and len(dataset) > 0:
         dataloader = DataLoader(dataset,
                                 batch_size=args.batch_size,
                                 shuffle=False,
-                                num_workers=args.num_workers)
+                                num_workers=args.num_workers,
+                                **kwargs)
         return dataloader
     else:
         return None
 
 
-def _wrap_tensor_dataset(dataset):
-    return TensorDataset(dataset, torch.zeros(dataset.shape[0]))
+def _wrap_tensor_dataset(dataset,  **kwargs):
+    return TensorDataset(dataset, torch.zeros(dataset.shape[0]),  **kwargs)
 
 
 def _split_valid_dataset(args, dataset):

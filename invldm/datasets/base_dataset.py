@@ -8,7 +8,7 @@ from ..utils.utils import scale2range, clip_outliers, namespace2dict
 
 
 class BaseDataset(Dataset):
-    def __init__(self, args):
+    def __init__(self, args, **kwargs):
         self.args = args
         self.transform = self._get_transform(**namespace2dict(self.args))
         self.cond_transform = self._get_transform(**namespace2dict(self.args.condition))

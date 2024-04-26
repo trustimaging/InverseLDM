@@ -130,9 +130,6 @@ class BaseRunner(ABC):
             states = torch.load(path, map_location="cpu")
         
         self.model.load_state_dict(states["model_state_dict"])
-
-        if self.args.name == "autoencoder" and self.args.model.adversarial_loss:
-            self.d_model.load_state_dict(states["d_model_state_dict"])
         
         if not model_only:
             self.optimiser.load_state_dict(states["optimiser_state_dict"])
@@ -141,6 +138,7 @@ class BaseRunner(ABC):
             self.steps = states["step"]
 
             if self.args.name.lower() == "autoencoder" and self.args.model.adversarial_loss:
+                self.d_model.load_state_dict(states["d_model_state_dict"])
                 self.d_optimiser.load_state_dict(states["d_optimiser_state_dict"])
                 self.d_lr_scheduler = states["d_lr_scheduler"]
 

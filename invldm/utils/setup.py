@@ -19,6 +19,11 @@ def setup_train():
     # add default args to missing args
     default_missing_args(args)
 
+    # sampling params not relevant for training
+    delattr(args.data, "sampling")
+    delattr(args.autoencoder, "sampling")
+    delattr(args.diffusion, "sampling")
+
     # check devices
     check_devices(args)
 
@@ -45,6 +50,7 @@ def setup_train():
         args.data.condition.path = os.getcwd()
 
     # for training we must make sure the sampling_only flags are off
+    args.data.sampling_only = False
     args.autoencoder.sampling_only = False
     args.diffusion.sampling_only = False
 
@@ -68,12 +74,23 @@ def setup_train():
 def setup_sampling():
     # getting cl and yml args
     args = parse_args()
+    print(args.autoencoder)
 
     # add default args to missing args
     default_missing_args(args)
 
+    # training and validation params not relevant for sampling
+    delattr(args.autoencoder, "training")
+    delattr(args.autoencoder, "validation")
+    delattr(args.diffusion, "training")
+    delattr(args.diffusion, "validation")
+
     # check devices
     check_devices(args)
+
+    # check and adjust dataset files, only required if conditioned
+    if args.data.condition.mode is not None:
+        check_dataset_file(args)
 
     # create relevant folders
     create_sampling_experiment_folders(args)
@@ -85,6 +102,7 @@ def setup_sampling():
     setup_logger(args)
 
     # for sampling, we must make sure the sampling_only flags are on
+    args.data.sampling_only = True
     args.autoencoder.sampling_only = True
     args.diffusion.sampling_only = True
 
@@ -237,7 +255,7 @@ def check_dataset_file(args):
                           args.data.dataset.lower() + "_dataset.py"), "r")
     except AttributeError:
         raise Exception(AttributeError, "Dataset name must be passed in config\
-                        file")
+                        file as 'dataset'. See config example. ")
     except FileNotFoundError:
         msg = f"File {args.data.dataset.lower()}_dataset.py must exist in\
                             {args.data.dataset_path}"
