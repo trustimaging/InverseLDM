@@ -85,11 +85,11 @@ def setup_sampling():
     setup_logger(args)
 
     # for sampling, we must make sure the sampling_only flags are on
-    args.autoencoder.sampling.sampling_only = True
-    args.diffusion.sampling.sampling_only = True
+    args.autoencoder.sampling_only = True
+    args.diffusion.sampling_only = True
 
     # save updated args as config in log folder
-    with open(os.path.join(args.run.log_folder, "config.yml"), "w") as f:
+    with open(os.path.join(args.run.log_folder, "sampling_config.yml"), "w") as f:
         yaml.dump(args, f, default_flow_style=False)
 
     # Set up tracker -- note this should come AFTER the yaml dump
@@ -422,12 +422,6 @@ def create_sampling_experiment_folders(args):
     samples_folder = os.path.join(args.run.exp_folder, "samples")
     args.run.samples_folder = samples_folder
     create_folder(samples_folder, args.run.overwrite, exception=False)
-
-    # # Create seismic folder
-    # if args.seismic.data_file and args.seismic.save_condition and args.seismic.mode != "full":
-    #     seismic_folder = os.path.join(args.run.exp_folder, "seismic")
-    #     args.seismic.seismic_path = seismic_folder
-    #     create_folder(seismic_folder, args.run.overwrite, exception=False)
 
     return None
 

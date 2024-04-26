@@ -14,6 +14,7 @@ data:
         # path: "/home/dp4018/data/ultrasound-data/Ultrasound-Vp-sagittal-data/acoustic/data/stack_pca/data"    
         resize: null
         scale: [0., 1.]
+        antialias: true
         clip_outliers: null
         to_tensor: false
         normalise: false
@@ -50,7 +51,7 @@ autoencoder:
         adversarial_mode: lsgan
         
     training:
-        batch_size: 8
+        batch_size: 32
         n_epochs: 300
         save_recon_freq: 500
         ckpt_freq: 500
@@ -59,7 +60,7 @@ autoencoder:
 
     validation:
         split: 0.2
-        batch_size: 8
+        batch_size: 32
         freq: 50
         save_recon_freq: 500
 
@@ -81,12 +82,15 @@ diffusion:
         channels_mult: [1, 2, 3]
         num_res_blocks: 2
         attention: [0, 1, 2]
-        num_transformer_layers: 2
-        num_attn_heads: 1
+        num_transformer_layers: 3
+        num_attn_heads: 2
         loss: l2
         # condition:
         #     in_channels: 1
         #     feature_channels: 64
+        condition:
+            in_channels: 1
+            feature_channels: 64
 
     params:
         beta_start: 0.0015
@@ -98,17 +102,19 @@ diffusion:
     training:
         batch_size: 4
         n_epochs: 300
+        n_epochs: 300
         ckpt_freq: 100
         ckpt_last_only: true
-        sampling_freq: 500
+        sampling_freq: 5000
         sampling_temperature: 0.5
         sampling_skip_steps: 0
 
     validation:
         split: 0.2
         batch_size: 4
+        batch_size: 4
         freq: 150
-        sampling_freq: 500
+        sampling_freq: 5000
         
     sampling:
         batch_size: 8

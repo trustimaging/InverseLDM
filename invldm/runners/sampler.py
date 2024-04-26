@@ -43,7 +43,7 @@ class Sampler():
             sample_loader=self.autoencoder_sample_dataloader
         )
         self.autoencoder.load_checkpoint(
-            self.autoencoder.checkpoint_path(),
+            self.autoencoder.get_checkpoint_path(),
             model_only=True
         )
         self.autoencoder.model.module.model.eval()
@@ -58,7 +58,7 @@ class Sampler():
             sample_loader=self.diffusion_sample_dataloader
         )
         self.diffusion.load_checkpoint(
-            self.diffusion.checkpoint_path(),
+            self.diffusion.get_checkpoint_path(),
             model_only=True
         )
         self.diffusion.model.module.ldm.eval()
