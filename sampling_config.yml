@@ -1,17 +1,17 @@
 data:
-  #   dataset: Brain2D
+  dataset: Brain2DSampling
   sampling:
     in_size: [256, 256]
     in_channels: 1
-#   condition:
-# mode: stack-trace-pca-100x100
-# path: "/home/dp4018/data/ultrasound-data/Ultrasound-Vp-sagittal-data/acoustic/data/stack_pca/data"
-# resize: null
-# scale: [0., 1.]
-# antialias: true
-# clip_outliers: null
-# to_tensor: false
-# normalise: false
+  condition:
+    mode: stack-trace-pca-100x100
+    path: "/home/dp4018/data/ultrasound-data/Ultrasound-Vp-sagittal-data/acoustic/data/stack_pca/for_sampling"
+    resize: null
+    scale: [0., 1.]
+    antialias: true
+    clip_outliers: null
+    to_tensor: false
+    normalise: false
 
 logging:
   tool: JSON
@@ -25,7 +25,7 @@ autoencoder:
     embbeded_channels: 1
     channels_mult: [1, 2, 2]
     num_res_blocks: 2
-    checkpoint: /home/dp4018/scripts/InverseLDM/exps/unconditioned256/uncond256_0/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
+    checkpoint: /home/dp4018/scripts/InverseLDM/exps/autoencoders256/cond_vae_trace_pca100/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
     condition:
       in_channels: 1
       feature_channels: 32
@@ -40,11 +40,11 @@ diffusion:
     channels_mult: [1, 2, 3]
     num_res_blocks: 2
     attention: [0, 1, 2]
-    num_transformer_layers: 4
-    num_attn_heads: 2
+    num_transformer_layers: 2
+    num_attn_heads: 4
     condition:
       in_channels: 1
-      feature_channels: 128
+      feature_channels: 64
 
   params:
     beta_start: 0.0015

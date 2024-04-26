@@ -9,7 +9,7 @@ class Brain2DSamplingDataset(BaseDataset):
     def __init__(self, args,  **kwargs):
         BaseDataset.__init__(self, args)
 
-        assert not self.args.sampling_only, "Brain2DSamplingDataset is designed for sampling. Please see Brain2DDataset"
+        assert self.args.sampling_only, "Brain2DSamplingDataset is designed for sampling. Please see Brain2DDataset"
 
         # Save args in object
         self.args = args
@@ -17,28 +17,28 @@ class Brain2DSamplingDataset(BaseDataset):
         # Check maxsamples
         try:
             maxsamples = self.args.maxsamples
-        except KeyError:
+        except (AttributeError, KeyError):
             maxsamples = None
 
         self.n_samples = kwargs.pop("n_samples", 64)
         self.cond_paths = []
 
-        if self.condition.mode:
-            prefix = self.args.condition.mode
-            self._get_image_paths(self.args.condition.path, prefix, maxsamples)
+        if self.args.condition.mode:
+            include = self.args.condition.mode
+            self._get_image_paths(self.args.condition.path, include, maxsamples)
 
         return None
 
-    def _get_image_paths(self, path, prefix="", maxsamples=None):
+    def _get_image_paths(self, path, include="", maxsamples=None):
         suffix = (".npy", ".npy.gz")
         # Loop through folders and subfolders
         for subdir, _, files in os.walk(path):
             for filename in files:
-                if filename.lower().startswith(prefix) and \
+                if include in filename.lower() and \
                    filename.lower().endswith(suffix):
                     self.cond_paths.append(os.path.join(subdir, filename))
         self.cond_paths = self.cond_paths[:maxsamples]
-        assert len(self.cond_paths) > 0, f" Found no data samples to load in {path} with prefix {prefix} and suffixes {suffix}"
+        assert len(self.cond_paths) > 0, f" Found no data samples to load in {path} with that includes {include} and has suffixes {suffix}"
         return None
 
     

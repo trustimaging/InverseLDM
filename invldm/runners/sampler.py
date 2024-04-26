@@ -57,9 +57,12 @@ class Sampler():
         self.diffusion.model.module.ldm.eval()
 
     def sample(self):
-        logging.info(" ---- Autoencoder Sampling ---- ")
-        self.autoencoder.sample()
-        logging.info(" ---- Diffusion Sampling ---- ")
-        self.diffusion.sample()
+        if self.args.autoencoder.sampling.enable:
+            logging.info(" ---- Autoencoder Sampling ---- ")
+            self.autoencoder.sample()
+
+        if self.args.diffusion.sampling.enable:
+            logging.info(" ---- Diffusion Sampling ---- ")
+            self.diffusion.sample()
         logging.info(" ---- Sampling Concluded without Errors ---- ")
 

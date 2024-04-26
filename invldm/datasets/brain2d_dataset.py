@@ -22,13 +22,14 @@ class Brain2DDataset(BaseDataset):
             else:
                 raise ValueError("mode must be 'mri' or 'vp', \
                                 but got '{}'".format(mode))
-        except KeyError:
-            self.mode = "mri"
+
+        except (AttributeError, KeyError):
+            self.mode = "vp"
 
         # Check maxsamples
         try:
             maxsamples = self.args.maxsamples
-        except KeyError:
+        except (AttributeError, KeyError):
             maxsamples = None
 
         # Get image paths
