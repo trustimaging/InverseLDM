@@ -8,7 +8,7 @@ import torch
 import sys
 import logging
 
-from .utils import dict2namespace, namespcae_summary_ticket
+from .utils import dict2namespace, namespace2dict, namespcae_summary_ticket
 from ..loggers.utils import _instance_logger
 
 
@@ -55,8 +55,8 @@ def setup_train():
     args.diffusion.sampling_only = False
 
     # save updated args as config in log folder
-    with open(os.path.join(args.run.log_folder, "config.yml"), "w") as f:
-        yaml.dump(args, f, default_flow_style=False)
+    with open(os.path.join(args.run.log_folder, "config_training.yml"), "w") as f:
+        yaml.dump(namespace2dict(args), f, default_flow_style=False, sort_keys=False, indent=4)
 
     # Set up tracker -- note this should come AFTER the yaml dump
     setup_model_tracker(args)
@@ -107,8 +107,8 @@ def setup_sampling():
     args.diffusion.sampling_only = True
 
     # save updated args as config in log folder
-    with open(os.path.join(args.run.log_folder, "sampling_config.yml"), "w") as f:
-        yaml.dump(args, f, default_flow_style=False)
+    with open(os.path.join(args.run.log_folder, "config_sampling.yml"), "w") as f:
+        yaml.dump(namespace2dict(args), f, default_flow_style=False, sort_keys=False, indent=4)
 
     # Set up tracker -- note this should come AFTER the yaml dump
     setup_model_tracker(args)
