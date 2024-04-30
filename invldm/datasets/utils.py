@@ -26,8 +26,7 @@ def _instance_dataset(args, **kwargs):
     else:
         from ..datasets.random_dataset import RandomDataset
         n_samples = kwargs.pop("n_samples", 64)
-        return RandomDataset(args, n_samples=n_samples, **kwargs)
-        
+        return RandomDataset(args, n_samples=n_samples, **kwargs)    
 
 def _instance_dataloader(args, dataset, **kwargs):
     if dataset and len(dataset) > 0:
