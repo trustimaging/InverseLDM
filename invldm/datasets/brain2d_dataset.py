@@ -42,11 +42,10 @@ class Brain2DDataset(BaseDataset):
         suffix = (".npy", ".npy.gz")
 
         # Loop through folders and subfolders
-        for subdir, _, files in os.walk(path):
-            for filename in files:
-                if filename.lower().startswith(prefix) and \
-                   filename.lower().endswith(suffix):
-                    self.data_paths.append(os.path.join(subdir, filename))
+        for filename in os.listdir(path):
+            if filename.lower().startswith(prefix) and \
+                filename.lower().endswith(suffix):
+                self.data_paths.append(os.path.join(path, filename))
         self.data_paths = self.data_paths[:maxsamples]
         assert len(self.data_paths) > 0, f" Found no data samples to load in {path} with prefix {prefix} and suffixes {suffix}"
         return None
@@ -90,6 +89,7 @@ class Brain2DDataset(BaseDataset):
 
         # Read data
         y = self._read_npy_data(y_path)
+        y = y / 3000.
 
         # slowness
         if self.args.slowness:
@@ -98,6 +98,7 @@ class Brain2DDataset(BaseDataset):
         # Apply transform
         if self.transform:
             y = self.transform(y)
+        # y = y / y.max()
 
         # Get condition, apply steps above
         if self.args.condition.mode is not None and self.args.condition.path is not None:
