@@ -4,7 +4,7 @@ data:
   antialias: true
   scale: null
   clip_outliers: false
-  to_tensor: true
+  to_tensor: false
   normalise: null
 
   sampling:
@@ -17,7 +17,7 @@ data:
     antialias: false
     scale: null
     clip_outliers: false
-    to_tensor: true
+    to_tensor: false
     normalise: false
 
 logging:
