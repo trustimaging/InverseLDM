@@ -30,9 +30,6 @@ class BaseDataset(Dataset):
         normalise = kwargs.pop("normalise", False)
 
         transform_list = []
-        if normalise:
-            transform_list.append(Normalize(normalise[0],
-                                            normalise[1]))
         if resize:
             transform_list.append(Resize(resize, antialias=antialias))
         if to_tensor:
@@ -42,6 +39,9 @@ class BaseDataset(Dataset):
         if scale:
             scale = scale
             transform_list.append(Scale(scale=scale))
+        if normalise:
+            transform_list.append(Normalize(normalise[0],
+                                            normalise[1]))
 
         return Compose(transform_list)
     
