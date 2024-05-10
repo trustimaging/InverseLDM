@@ -13,6 +13,8 @@ class Brain2DDataset(BaseDataset):
 
         # Save args in object
         self.args = args
+        self.args.slowness = args.slowness if hasattr(args, "slowness") else False
+        self.args.log = args.log if hasattr(args, "log") else False
 
         # Checking mode
         try:
@@ -91,9 +93,13 @@ class Brain2DDataset(BaseDataset):
         y = self._read_npy_data(y_path)
         y = y / 3000.
 
-        # slowness
+        # Slowness if prompted
         if self.args.slowness:
-            y = 1./ y
+            y = 1. / y
+
+        # Log if prompted
+        if self.args.log:
+            y = torch.log(y) + 1
         
         # Apply transform
         if self.transform:
