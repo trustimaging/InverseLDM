@@ -3,8 +3,11 @@ import torch.nn.functional as F
 from ..utils.utils import scale2range
 from functools import partial
 
-def null_fn(*args, **kwargs):
-    return torch.tensor([0.])
+class NullLoss(torch.nn.Module):
+    def init(*args, **kwargs):
+        pass
+    def forward(*args, **kwargs):
+        return torch.tensor([0.])
 
 
 def kl_div(mean, log_var):
@@ -24,6 +27,7 @@ def laplacian2D(mesh, alpha=-0.2, beta=1.5):
 
 def _divergence_fn(args):
     if not args.model.div_loss or args.params.div_weight<=0:
+        null_fn = NullLoss()
         return null_fn
     
     elif args.model.div_loss.lower() == "kl":
@@ -37,6 +41,7 @@ def _divergence_fn(args):
 
 def _perceptual_fn(args):
     if not args.model.perceptual_loss or args.params.perceptual_weight<=0:
+        null_fn = NullLoss()
         return null_fn
     
     elif args.model.perceptual_loss == "wiener":
@@ -82,6 +87,7 @@ def _reconstruction_fn(args):
 
 def _adversarial_fn(args):
     if not args.params.adversarial_mode or args.params.adversarial_weight<=0:
+        null_fn = NullLoss()
         return null_fn
     
     elif args.params.adversarial_mode == "vanilla":
