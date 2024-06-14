@@ -227,6 +227,7 @@ class DDIMSampler(DiffusionSampler):
                uncond_scale: float = 1.,
                uncond_cond: Optional[torch.Tensor] = None,
                skip_steps: int = 0,
+               output_last_only: bool = True, 
                ):
         """
         ### Sampling Loop
@@ -241,6 +242,7 @@ class DDIMSampler(DiffusionSampler):
         :param uncond_cond: is the conditional embedding for empty prompt $c_u$
         :param skip_steps: is the number of time steps to skip $i'$. We start sampling from $S - i'$.
             And `x_last` is then $x_{\tau_{S - i'}}$.
+        :param output_last_only: whether to return sampling for only last timestep or all
         """
 
         # Get device and batch size
@@ -252,6 +254,9 @@ class DDIMSampler(DiffusionSampler):
 
         # Time steps to sample at $\tau_{S - i'}, \tau_{S - i' - 1}, \dots, \tau_1$
         time_steps = np.flip(self.time_steps)[skip_steps:]
+
+        # Store timesteps
+        xs = [x]
 
         for i, step in enumerate(time_steps):
             # Index $i$ in the list $[\tau_1, \tau_2, \dots, \tau_S]$
@@ -265,9 +270,13 @@ class DDIMSampler(DiffusionSampler):
                                             temperature=temperature,
                                             uncond_scale=uncond_scale,
                                             uncond_cond=uncond_cond)
+            if not output_last_only:
+                xs.append(x)
+            else:
+                xs = [x]
 
         # Return $x_0$
-        return x
+        return xs
 
     @torch.no_grad()
     def p_sample(self, x: torch.Tensor, c: torch.Tensor, t: torch.Tensor, step: int, index: int, *,
@@ -509,6 +518,7 @@ class DDPMSampler(DiffusionSampler):
                uncond_scale: float = 1.,
                uncond_cond: Optional[torch.Tensor] = None,
                skip_steps: int = 0,
+               output_last_only: bool = True, 
                ):
         """
         ### Sampling Loop
@@ -523,6 +533,7 @@ class DDPMSampler(DiffusionSampler):
         :param uncond_cond: is the conditional embedding for empty prompt $c_u$
         :param skip_steps: is the number of time steps to skip $t'$. We start sampling from $T - t'$.
             And `x_last` is then $x_{T - t'}$.
+        :param output_last_only: whether to return sampling for only last timestep or all
         """
 
         # Get device and batch size
@@ -534,6 +545,9 @@ class DDPMSampler(DiffusionSampler):
 
         # Time steps to sample at $T - t', T - t' - 1, \dots, 1$
         time_steps = np.flip(self.time_steps)[skip_steps:]
+
+        # Store timesteps
+        xs = [x]
 
         # Sampling loop
         logging.info("Sampling with DDPM ...")
@@ -547,9 +561,13 @@ class DDPMSampler(DiffusionSampler):
                                             temperature=temperature,
                                             uncond_scale=uncond_scale,
                                             uncond_cond=uncond_cond)
+            if not output_last_only:
+                xs.append(x)
+            else:
+                xs = [x]
 
         # Return $x_0$
-        return x
+        return xs
 
     @torch.no_grad()
     def p_sample(self, x: torch.Tensor, c: torch.Tensor, t: torch.Tensor, step: int,

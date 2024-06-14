@@ -99,7 +99,8 @@ class DiffusionRunner(BaseRunner):
             temperature=self.temperature,
             skip_steps=self.skip_steps,
             repeat_noise=False,
-        )
+            output_last_only=True,
+        )[0]
 
         # Decode to reconstruct data
         sample = self.model.module.ldm.autoencoder_decode(z_sample, cond)
