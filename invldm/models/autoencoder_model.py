@@ -350,8 +350,8 @@ class Decoder(nn.Module):
         # Normalize and map to image space
         h = self.norm_out(h)
         h = swish(h)
-        img = torch.sigmoid(self.conv_out(h))
-
+        # img = torch.sigmoid(self.conv_out(h))
+        img = self.conv_out(h)
         return img
 
 
