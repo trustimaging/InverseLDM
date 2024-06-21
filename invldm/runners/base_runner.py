@@ -67,39 +67,46 @@ class BaseRunner(ABC):
             "name": self.args.name,
             "dataset": self.train_loader.dataset.dataset.__dict__,
             "device": self.device,
-            "device_ids": self.model.device_ids,
-            "gpus": [torch.cuda.get_device_name(id) for id in self.model.device_ids],
+            "device_ids": self.gpu_ids if "cuda" in self.run_args.device else None,
+            "gpus": [torch.cuda.get_device_name(id) for id in self.gpu_ids] if "cuda" in self.run_args.device else None,
             "processor": platform.machine() + " " + platform.processor() + " " + platform.system(),
             "seed": self.run_args.seed,
         }
         hparam_dict.update({"model": namespace2dict(self.args, flatten=True)})
         self.hparam_dict = hparam_dict
         return None
-
-    def save_checkpoint(self, path: str = "") -> None:
-        states = {
+    
+    def save_checkpoint(self, path: str = "", ckpt_name: str = "") -> None:
+        model_states = {
                 "model_state_dict": self.model.state_dict(),
-                "optimiser_state_dict": self.optimiser.state_dict(),
-                "lr_scheduler": self.lr_scheduler,
                 "epoch": self.epoch,
                 "step": self.steps,
             }
-        if self.args.name.lower() == "autoencoder" and self.args.model.adversarial_loss:
-            states.update({
-                "d_model_state_dict": self.d_model.state_dict(),
-                "d_optimiser_state_dict": self.d_optimiser.state_dict(),
-                "d_lr_scheduler": self.d_lr_scheduler,
-            })
-        if not path:
-            latest_ckpt_name = f"{self.args.name.lower()}_ckpt_latest.pth"
-            path = os.path.join(self.args.ckpt_path, latest_ckpt_name)
+        if hasattr(self, "discriminator"):
+            model_states.update({"d_model_state_dict": self.discriminator.state_dict()})
 
-        torch.save(states, path)
-        logging.info(f"Saved {self.args.name.lower()} checkpoint {path}")
+        optim_states = {
+            "optimiser_state_dict": self.optimiser.state_dict(),
+            "lr_scheduler": self.lr_scheduler,
+            "epoch": self.epoch,
+            "step": self.steps,
+        }
+
+        if not path:
+            path = self.args.ckpt_path
+
+        if not ckpt_name:
+            ckpt_name = f"{self.args.name.lower()}_ckpt_latest.pth"
+
+        optim_ckpt_name = ckpt_name.split(".")[0]+"_optimiser.pth"
+
+        torch.save(model_states, os.path.join(path, ckpt_name))
+        torch.save(optim_states, os.path.join(path, optim_ckpt_name))
+        logging.info(f"Saved {self.args.name.lower()} checkpoints at {path}")
         return None
 
     def load_checkpoint(self, path: Optional[str] = "", model_only: Optional[bool] = False) -> None:
-        if not path :
+        if not path:
             try:
                 latest_ckpt_name = [f for f in os.listdir(self.args.ckpt_path) if fnmatch.fnmatch(f, "*latest*")][0]
                 path = os.path.join(self.args.ckpt_path, latest_ckpt_name)
@@ -123,25 +130,32 @@ class BaseRunner(ABC):
                             return None
 
         logging.info(f"Loading {self.args.name} checkpoint {path} ...")
-
         try:
-            states = torch.load(path)
+            model_states = torch.load(path)
         except RuntimeError:
-            states = torch.load(path, map_location="cpu")
-        
-        self.model.load_state_dict(states["model_state_dict"])
+            model_states = torch.load(path, map_location="cpu")
+        self.model.load_state_dict(model_states["model_state_dict"])
+        self.model.to(self.device)
         
         if not model_only:
-            self.optimiser.load_state_dict(states["optimiser_state_dict"])
-            self.lr_scheduler = states["lr_scheduler"]
-            self.epoch = states["epoch"]
-            self.steps = states["step"]
+            self.epoch = model_states["epoch"]
+            self.steps = model_states["step"]
 
-            if self.args.name.lower() == "autoencoder" and self.args.model.adversarial_loss:
-                self.d_model.load_state_dict(states["d_model_state_dict"])
-                self.d_optimiser.load_state_dict(states["d_optimiser_state_dict"])
-                self.d_lr_scheduler = states["d_lr_scheduler"]
+            if "discriminator" in model_states.keys() and hasattr(self, "discriminator"):
+                self.discriminator.load_state_dict(model_states["d_model_state_dict"])
+                self.discriminator.to(self.device)
 
+            optim_path = os.path.splitext(path)[0]+"_optimiser.pth"
+            logging.critical("\n\n\n", os.path.isfile(optim_path), "\n\n\n")
+            try:
+                try:
+                    optim_states = torch.load(optim_path)
+                except RuntimeError:
+                    optim_states = torch.load(optim_path, map_location="cpu")
+                self.optimiser.load_state_dict(optim_states["optimiser_state_dict"])
+                self.lr_scheduler = optim_states["lr_scheduler"]
+            except FileNotFoundError:
+                logging.critical(f'Could not find optimiser states dict to load. Expecting file {optim_path}')
 
         logging.info(f"{self.args.name.lower().capitalize()} checkpoint successfully loaded.")
         return None
@@ -182,7 +196,7 @@ class BaseRunner(ABC):
         return None
 
     def save_figure(self, x: torch.Tensor, mode: str, fig_type: str, save_tensor: Optional[bool] = False
-                    , scale: Optional[bool] = True) -> None:
+                    , scale: Optional[bool] = False) -> None:
         assert mode in ["training", "validation", "sampling", ""]
 
         if self.args.sampling_only:
@@ -197,8 +211,14 @@ class BaseRunner(ABC):
                 path = os.path.join(self.args.samples_path, file_name)
             else:
                 path = os.path.join(self.args.log_path, file_name)
-            
-        fig = visualise_samples(x, scale=scale)
+        
+        plot_kwargs = dict(scale=scale)
+        if fig_type == "error":
+            plot_kwargs.update(dict(vmin=-1, vmax=1, cmap="seismic"))
+        else:
+            plot_kwargs.update(dict(vmin=self.logging_args.plot.vmin, vmax=self.logging_args.plot.vmax, cmap=self.logging_args.plot.cmap))
+
+        fig = visualise_samples(x, **plot_kwargs)
         plt.savefig(path)
         plt.close(fig)
         logging.info(f"Saved {self.args.name} {mode} {fig_type} figure in {path}")
@@ -517,8 +537,8 @@ class BaseRunner(ABC):
                         if (self.args.training.ckpt_freq > 0 and self.steps % self.args.training.ckpt_freq == 0) or epoch == self.args.training.n_epochs:
                             if not self.args.training.ckpt_last_only:
                                 ckpt_name = f"{self.args.name.lower()}_ckpt_epoch_{self.epoch}_step_{self.steps}.pth"
-                                ckpt_path = os.path.join(self.args.ckpt_path, ckpt_name)
-                                self.save_checkpoint(ckpt_path)
+                                # ckpt_path = os.path.join(self.args.ckpt_path, ckpt_name)
+                                self.save_checkpoint(ckpt_name=ckpt_name)
 
                             # Update latest checkpoint
                             self.save_checkpoint()

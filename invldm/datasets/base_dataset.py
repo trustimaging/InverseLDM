@@ -4,6 +4,8 @@ import torch.nn as nn
 from torch.utils.data import Dataset
 from torchvision.transforms import Compose, Resize, Lambda, ToTensor, Normalize
 
+from torchio.transforms import Resize as IOResize
+
 from ..utils.utils import scale2range, clip_outliers, namespace2dict
 
 
@@ -23,6 +25,7 @@ class BaseDataset(Dataset):
 
     def _get_transform(self, **kwargs):
         resize = kwargs.pop("resize", None)
+        resize3d = kwargs.pop("resize", None)
         antialias = kwargs.pop("antialias", True)
         to_tensor = kwargs.pop("to_tensor", True)
         outliers = kwargs.pop("clip_outliers", False)
@@ -32,6 +35,8 @@ class BaseDataset(Dataset):
         transform_list = []
         if resize:
             transform_list.append(Resize(resize, antialias=antialias))
+        if resize3d:
+            transform_list.append(IOResize(resize, "sitkBSpline"))
         if to_tensor:
             transform_list.append(ToTensor())
         if outliers:

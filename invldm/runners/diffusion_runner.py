@@ -1,39 +1,72 @@
+import os
+
 import torch
 import torch.nn as nn
+import logging
+
+from typing import Optional
 
 from . import BaseRunner
 
-from ..models.utils import (_instance_diffusion_model, _instance_optimiser,
-                          _instance_diffusion_loss_fn, _instance_lr_scheduler,
-                          data_parallel_wrapper)
+from generative.inferers import LatentDiffusionInferer
+from generative.networks.nets import DiffusionModelUNet
+from generative.networks.schedulers import DDPMScheduler, DDIMScheduler, PNDMScheduler
+
+from ..utils.utils import namespace2dict, filter_kwargs_by_class_init
 
 
 class DiffusionRunner(BaseRunner):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        autoencoder = kwargs.pop("autoencoder").eval()
-        self.model = _instance_diffusion_model(autoencoder,
-                                               self.args,
-                                               self.device)
-        self.model = data_parallel_wrapper(module=self.model,
-                                           device=self.device,
-                                           device_ids=self.gpu_ids)
+        self.autoencoder = kwargs.pop("autoencoder").eval()
+        self.spatial_dims = kwargs.pop("spatial_dims")
+        self.latent_channels = kwargs.pop("latent_channels")
+        
+        try:
+            self.num_inference_timesteps = self.args.params.num_inference_timesteps
+        except AttributeError:
+            self.num_inference_timesteps = self.args.params.num_train_timesteps
 
-        self.device = self.model.module.device
+        model_kwargs = filter_kwargs_by_class_init(DiffusionModelUNet, namespace2dict(self.args.model))
+        _ = [model_kwargs.pop(key, None) for key in ["spatial_dims", "in_channels", "out_channels"]]
+        self.model = DiffusionModelUNet(
+            spatial_dims=self.spatial_dims,
+            in_channels=self.latent_channels,
+            out_channels=self.latent_channels,
+            **model_kwargs
+        ).to(self.device)
 
-        self.optimiser = _instance_optimiser(self.args, self.model)
-        self.lr_scheduler = _instance_lr_scheduler(self.args, self.optimiser)
-        self.loss_fn = _instance_diffusion_loss_fn(self.args)
+        if self.args.params.sampler == "ddim":
+            scheduler_args = filter_kwargs_by_class_init(DDIMScheduler, namespace2dict(self.args.params))
+            self.scheduler = DDIMScheduler(**scheduler_args)
+        elif self.args.params.sampler == "ddpm":
+            scheduler_args = filter_kwargs_by_class_init(DDPMScheduler, namespace2dict(self.args.params))
+            self.scheduler = DDPMScheduler(**scheduler_args)
+        elif self.args.params.sampler == "pndm":
+            scheduler_args = filter_kwargs_by_class_init(PNDMScheduler, namespace2dict(self.args.params))
+            self.scheduler = PNDMScheduler(**scheduler_args)
 
-        if self.args.sampling_only:
-            self.temperature = self.args.sampling.temperature
-            self.skip_steps = int(self.args.sampling.skip_steps)
-        else:
-            self.temperature = self.args.training.sampling_temperature
-            self.skip_steps = int(self.args.training.sampling_skip_steps)
+        with torch.no_grad():
+            with torch.amp.autocast(str(self.device)):
+                z = self.autoencoder.encode_stage_2_inputs(next(iter(self.train_loader)).float().to(self.device))
+        logging.info(f"Scaling factor set to {1/torch.std(z)}")
+        self.scale_factor = 1 / torch.std(z)
+
+        self.inferer = LatentDiffusionInferer(self.scheduler, scale_factor=self.scale_factor)
+
+        if not self.args.sampling_only:
+            self.recon_loss_fn = torch.nn.L1Loss() if self.args.params.recon_loss.lower() == "l1" else torch.nn.MSELoss()
+            
+            optim_kwargs = filter_kwargs_by_class_init(torch.optim.Adam, namespace2dict(self.args.optim))
+            optim_kwargs.pop("params", None)
+            self.optimiser = torch.optim.Adam(self.model.parameters(), **optim_kwargs)
+            self.scaler = torch.amp.GradScaler(self.device)
 
     def train_step(self, input, **kwargs):
+        self.model.train()
+        self.autoencoder.eval()
+
         # Dictionary of outputs
         output = {}
 
@@ -41,26 +74,27 @@ class DiffusionRunner(BaseRunner):
         cond = kwargs.pop("condition", None)
 
         # Forward pass: predict model noise based on condition
-        noise, noise_pred = self.model(input, cond)
+        with torch.amp.autocast(str(self.device)):
+            z_mu, z_sigma = self.autoencoder.encode(input)
+            z = self.autoencoder.sampling(z_mu, z_sigma)
+            noise = torch.randn_like(z).to(self.device)
 
+            timesteps = torch.randint(0, self.inferer.scheduler.num_train_timesteps, (z.shape[0],), device=z.device).long()
+            noise_pred = self.inferer(inputs=input, diffusion_model=self.model, noise=noise, timesteps=timesteps, autoencoder_model=self.autoencoder)
+            
         # Compute training loss
-        loss = self.loss_fn(noise, noise_pred)
+        loss = self.recon_loss_fn(noise_pred.float(), noise.float())
         
         # Zero grad and back propagation
-        self.optimiser.zero_grad()
-        loss.backward()
+        self.optimiser.zero_grad(set_to_none=True)
+        self.scaler.scale(loss).backward()
+        self.scaler.step(self.optimiser)
+        self.scaler.update()
 
         # Gradient Clipping
-        if self.args.optim.grad_clip:
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(),
-                                           self.args.optim.grad_clip)
-
-        # Update gradients
-        self.optimiser.step()
-
-        # Update lr scheduler
-        if self.lr_scheduler:
-            self.lr_scheduler.step()
+        # if self.args.optim.grad_clip:
+        #     torch.nn.utils.clip_grad_norm_(self.model.parameters(),
+        #                                    self.args.optim.grad_clip)
 
         # Output dictionary update
         output.update({
@@ -68,15 +102,25 @@ class DiffusionRunner(BaseRunner):
         })
         return output
 
+    @torch.no_grad()
     def valid_step(self, input, **kwargs):
+        self.model.eval()
+        self.autoencoder.eval()
+
         # Get condition from kwargs
         cond = kwargs.pop("condition", None)
 
         # Forward pass: predict model noise based on condition
-        noise, noise_pred = self.model(input, cond)
+        with torch.amp.autocast(str(self.device)):
+            z_mu, z_sigma = self.autoencoder.encode(input)
+            z = self.autoencoder.sampling(z_mu, z_sigma)
+            noise = torch.randn_like(z).to(self.device)
 
+            timesteps = torch.randint(0, self.inferer.scheduler.num_train_timesteps, (z.shape[0],), device=z.device).long()
+            noise_pred = self.inferer(inputs=input, diffusion_model=self.model, noise=noise, timesteps=timesteps, autoencoder_model=self.autoencoder)
+            
         # Compute validation loss
-        loss = self.loss_fn(noise, noise_pred)
+        loss = self.recon_loss_fn(noise_pred.float(), noise.float())
 
         # Output dictionary
         output = {
@@ -86,22 +130,29 @@ class DiffusionRunner(BaseRunner):
 
     @torch.no_grad()
     def sample_step(self, input, **kwargs):
+        self.model.eval()
+        self.autoencoder.eval()
+
         # Get sampling parameters from kwargs
+        num_inference_steps = kwargs.pop("num_inference_steps", self.num_inference_timesteps)
+
+        # Get condition from kwargs
         cond = kwargs.pop("condition", None)
 
         # One autoencoder forward pass to get shape of latent space -- can be optimised!
-        z = self.model.module.ldm.autoencoder_encode(input, cond)
+        z_mu, z_sigma = self.autoencoder.encode(input)
+        z_ = self.autoencoder.sampling(z_mu, z_sigma)
+        z = torch.randn_like(z_).to(self.device)
+
+        # Set number of inference steps for scheduler
+        self.scheduler.set_timesteps(num_inference_steps=num_inference_steps)
 
         # Sample latent space with diffusion model
-        z_sample = self.model.module.sampler.sample(
-            shape=z.shape,
-            cond=cond,
-            temperature=self.temperature,
-            skip_steps=self.skip_steps,
-            repeat_noise=False,
-            output_last_only=True,
-        )[0]
+        logging.info("Sampling...")
+        with torch.amp.autocast(str(self.device)):
+            samples = self.inferer.sample(
+                input_noise=z, diffusion_model=self.model, scheduler=self.scheduler, autoencoder_model=self.autoencoder,
+                **kwargs
+            )
 
-        # Decode to reconstruct data
-        sample = self.model.module.ldm.autoencoder_decode(z_sample, cond)
-        return sample, z
+        return samples, z

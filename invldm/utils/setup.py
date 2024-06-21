@@ -8,6 +8,9 @@ import torch
 import sys
 import logging
 
+from monai.config import print_config as print_monai_config
+from monai.utils import set_determinism
+
 from .utils import dict2namespace, namespace2dict, namespcae_summary_ticket
 from ..loggers.utils import _instance_logger
 
@@ -20,9 +23,9 @@ def setup_train():
     default_missing_args(args)
 
     # sampling params not relevant for training
-    delattr(args.data, "sampling")
-    delattr(args.autoencoder, "sampling")
-    delattr(args.diffusion, "sampling")
+    # delattr(args.data, "sampling")
+    # delattr(args.autoencoder, "sampling")
+    # delattr(args.diffusion, "sampling")
 
     # check devices
     check_devices(args)
@@ -41,6 +44,7 @@ def setup_train():
 
     # setup seeds and devices
     set_seed(args.run.seed)
+    set_determinism(args.run.seed)
 
     # set up loggers
     setup_logger(args)
@@ -66,6 +70,8 @@ def setup_train():
         config = "\n\n ------------------------------ RESUMED CONFIGURATION ------------------------------ " + namespcae_summary_ticket(args)
     else:
         config = "\n\n ---------------------------------- CONFIGURATION ---------------------------------- " + namespcae_summary_ticket(args)
+    
+    print_monai_config()
     logging.info(config)
 
     return args
@@ -80,10 +86,10 @@ def setup_sampling():
     default_missing_args(args)
 
     # training and validation params not relevant for sampling
-    delattr(args.autoencoder, "training")
-    delattr(args.autoencoder, "validation")
-    delattr(args.diffusion, "training")
-    delattr(args.diffusion, "validation")
+    # delattr(args.autoencoder, "training")
+    # delattr(args.autoencoder, "validation")
+    # delattr(args.diffusion, "training")
+    # delattr(args.diffusion, "validation")
 
     # check devices
     check_devices(args)

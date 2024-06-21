@@ -20,6 +20,6 @@ setup(name='invldm',
       platforms=["Linux", "Mac OS-X", "Unix"],
       test_suite='pytest',
       author="Deborah Pelacani Cruz",
-      author_email='deborah.pelacani-cruz18@imperial.ac.uk',
+      author_email='deborah.pelacani@gmail.com',
       license='MIT',
       packages=find_packages(exclude=exclude))

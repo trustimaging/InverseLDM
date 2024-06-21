@@ -1,12 +1,13 @@
 import torch
 import logging
-from torchsummary import summary
 
-from .autoencoder_runner import AutoencoderRunner
-from .diffusion_runner import DiffusionRunner
+from functools import partial
+from torchsummary import summary
 
 from ..datasets.utils import (_instance_dataset, _instance_dataloader,
                             _split_valid_dataset)
+
+from ..runners import AutoencoderRunner, DiffusionRunner
 
 
 class Trainer():
@@ -33,9 +34,10 @@ class Trainer():
         self.diffusion_valid_dataloader = _instance_dataloader(
             self.args.diffusion.validation, self.diffusion_valid_dataset
         )
+        
 
         # Model trainers
-        self.autoencoder = AutoencoderRunner(
+        self.autoencoder_runner = AutoencoderRunner(
             args=args.autoencoder,
             args_run=args.run,
             args_logging=args.logging,
@@ -43,11 +45,13 @@ class Trainer():
             valid_loader=self.autoencoder_valid_dataloader,
         )
 
-        self.diffusion = DiffusionRunner(
-            autoencoder=self.autoencoder.model.module.model,
+        self.diffusion_runner = DiffusionRunner(
             args=args.diffusion,
             args_run=args.run,
             args_logging=args.logging,
+            autoencoder=self.autoencoder_runner.model,
+            spatial_dims=args.autoencoder.model.spatial_dims,
+            latent_channels=args.autoencoder.model.latent_channels,
             train_loader=self.diffusion_train_dataloader,
             valid_loader=self.diffusion_valid_dataloader,
         )
@@ -61,21 +65,26 @@ class Trainer():
         sample = self.dataset[0]
         if isinstance(sample, tuple):
             sample = sample[0]
-        sample = sample.to(self.autoencoder.device)
-        logging.info(summary(model=self.autoencoder.model.module, input_data=sample.shape, device=self.autoencoder.device))
+        sample = sample.to(self.autoencoder_runner.device)
+        logging.info(summary(model=self.autoencoder_runner.model, input_data=sample.shape, device=self.autoencoder_runner.device))
 
         logging.info(" ---- Model - Diffusion ----")
         if self.args.diffusion.training.n_epochs > 0:
             with torch.no_grad():
-                _ = self.diffusion.model.module.autoencoder.encode(sample.unsqueeze(0).float())
-                embbeded_sample = self.diffusion.model.module.autoencoder.sample().squeeze(0).to(self.diffusion.device)
-            logging.info(summary(model=self.diffusion.model.module, input_data=embbeded_sample.shape, device=self.diffusion.device))
+                mu, sigma = self.diffusion_runner.autoencoder.encode(sample.unsqueeze(0).float())
+                z = self.diffusion_runner.autoencoder.sampling(mu, sigma)
+                t = torch.tensor([0]).repeat(z.shape[0])
+            logging.info(summary(model=self.diffusion_runner.model, input_data=(z, t), device=self.diffusion_runner.device))
         
         logging.info(" ---- Autoencoder Training ---- ")
-        self.autoencoder.train()
+        self.autoencoder_runner.train()
+        
+        del self.autoencoder_runner.discriminator
+        del self.autoencoder_runner.perceptual_loss_fn
 
         if self.args.diffusion.training.n_epochs > 0:
             logging.info(" ---- Diffusion Training ---- ")
-            self.diffusion.train()
+            self.diffusion_runner.train()
 
         logging.info(" ---- Training Concluded without Errors ---- ")
+

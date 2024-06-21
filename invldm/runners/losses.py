@@ -3,8 +3,11 @@ import torch.nn.functional as F
 from ..utils.utils import scale2range
 from functools import partial
 
+from generative.losses.adversarial_loss import PatchAdversarialLoss
+from generative.losses.perceptual import PerceptualLoss
+
 class NullLoss(torch.nn.Module):
-    def init(*args, **kwargs):
+    def __init__(self, *args, **kwargs):
         pass
     def forward(*args, **kwargs):
         return torch.tensor([0.])

@@ -2,6 +2,7 @@ import argparse
 import torch
 import nvidia_smi
 import logging
+import inspect
 
 
 def dict2namespace(dictionary: dict) -> argparse.Namespace:
@@ -71,3 +72,12 @@ def gpu_diagnostics(pretext=""):
         info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
         logging.info("{} -- Device {}: {}, Memory : ({:.2f}% free): {}(total), {} (free), {} (used)".format(pretext, i, nvidia_smi.nvmlDeviceGetName(handle), 100*info.free/info.total, info.total, info.free, info.used))
     nvidia_smi.nvmlShutdown()
+
+
+def filter_kwargs_by_func(func, kwargs):
+    accepted_args = inspect.getfullargspec(func).args
+    return {k: v for k, v in kwargs.items() if k in accepted_args}
+
+
+def filter_kwargs_by_class_init(cls, kwargs):
+    return filter_kwargs_by_func(cls.__init__, kwargs)

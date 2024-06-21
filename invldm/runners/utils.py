@@ -6,23 +6,7 @@ import torch.optim as optim
 
 from ..utils.utils import scale2range
 
-from .discriminator import NLayerDiscriminator
-from .diffusion_model import DiffusionWrapper
-from .autoencoder_model import AutoencoderWrapper, GaussianDistribution
 from .losses import _divergence_fn, _perceptual_fn, _reconstruction_fn, _adversarial_fn
-
-
-def _instance_autoencoder_model(args, device="cpu"):
-    return AutoencoderWrapper(args, device)
-
-
-def _instance_diffusion_model(autoencoder, args, device="cpu"):
-    return DiffusionWrapper(autoencoder, args, device)
-
-def _instance_discriminator_model(args, device="cpu"):
-    return NLayerDiscriminator(args.model.out_channels,
-                               args.params.disc_feature_channels,
-                               args.params.disc_n_layers).to(device)
 
 
 def _instance_optimiser(args, model):
@@ -127,15 +111,6 @@ def _instance_diffusion_loss_fn(args):
     diffusion_loss_fn = _reconstruction_fn(args)    
     return diffusion_loss_fn
 
-
-def data_parallel_wrapper(module, device, **kwargs): 
-    """
-    Ensures code consistency for DataParallel when cpu is used.
-    """
-    if str(device) == "cpu":
-        return DataParallelCPU(module)
-    else:
-        return nn.DataParallel(module, **kwargs)
     
 
 def set_requires_grad(nets, requires_grad=False):
@@ -152,12 +127,3 @@ def set_requires_grad(nets, requires_grad=False):
             for param in net.parameters():
                 param.requires_grad = requires_grad
 
-
-class DataParallelCPU(nn.Module):
-    def __init__(self, module, **kwargs):
-        super().__init__()
-        self.module = module
-        self.device_ids = []
-
-    def forward(self, *inputs, **kwargs):
-        return self.module(*inputs, **kwargs)

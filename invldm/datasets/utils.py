@@ -29,11 +29,15 @@ def _instance_dataset(args, **kwargs):
         return RandomDataset(args, n_samples=n_samples, **kwargs)    
 
 def _instance_dataloader(args, dataset, **kwargs):
+    try:
+        num_workers = args.num_workers
+    except AttributeError:
+        num_workers = 2
     if dataset and len(dataset) > 0:
         dataloader = DataLoader(dataset,
                                 batch_size=args.batch_size,
                                 shuffle=False,
-                                num_workers=args.num_workers,
+                                num_workers=num_workers,
                                 **kwargs)
         return dataloader
     else:
