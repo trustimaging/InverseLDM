@@ -4,16 +4,19 @@ import torch
 import torch.nn as nn
 import logging
 
+from functools import partial
 from typing import Optional
 
 from . import BaseRunner
 from .utils import _instance_optimiser, _instance_lr_scheduler, set_requires_grad, _instance_autoencoder_loss_fn, _instance_discriminator_loss_fn
 
+from awloss import AWLoss
+
 from generative.losses.perceptual import PerceptualLoss
 from generative.losses.adversarial_loss import PatchAdversarialLoss
 from generative.networks.nets import AutoencoderKL, PatchDiscriminator
 
-from ..utils.utils import namespace2dict, filter_kwargs_by_class_init
+from ..utils.utils import namespace2dict, filter_kwargs_by_class_init, scale2range
 
 
 class AutoencoderRunner(BaseRunner):
@@ -34,6 +37,17 @@ class AutoencoderRunner(BaseRunner):
                 network_type=self.args.params.lpips_model
             ).to(self.device)
             self.perceptual_weight = self.args.params.perceptual_weight
+
+            self.wiener_loss_fn = AWLoss(
+                method="fft",
+                filter_dim=self.args.params.wiener_filter_dim,
+                filter_scale=self.args.params.wiener_filter_scale,
+                mode=self.args.params.wiener_mode,
+                epsilon=self.args.params.wiener_epsilon,
+                penalty_function=partial(laplace2D, alpha=self.args.params.wiener_laplace_alpha, beta=self.args.params.wiener_laplace_beta),
+                store_filters=False,
+            )
+            self.wiener_weight=self.args.params.wiener_weight
 
             self.discriminator = PatchDiscriminator(
                 spatial_dims=self.args.model.spatial_dims,
@@ -70,8 +84,10 @@ class AutoencoderRunner(BaseRunner):
 
             kl_loss = 0.5 * torch.sum(z_mu.pow(2) + z_sigma.pow(2) - torch.log(z_sigma.pow(2)) - 1, dim=[1, 2, 3])
             kl_loss = torch.sum(kl_loss) / kl_loss.shape[0]
+
+            w_loss = self.wiener_loss_fn(input.float(), recon.float())
             
-            loss = (r_loss * self.recon_weight) + (self.kl_weight * kl_loss) + (self.perceptual_weight * p_loss)
+            loss = (r_loss * self.recon_weight) + (self.kl_weight * kl_loss) + (self.wiener_weight * w_loss) + (self.perceptual_weight * p_loss)
 
             if self.epoch > self.args.training.warm_up_epochs:
                 logits_fake = self.discriminator(recon.contiguous().float())[-1]
@@ -121,10 +137,15 @@ class AutoencoderRunner(BaseRunner):
             recon, z_mu, z_sigma = self.model(input)
 
             r_loss = self.recon_loss_fn(recon.float(), input.float())
+
             p_loss = self.perceptual_loss_fn(recon.float(), input.float())
+
             kl_loss = 0.5 * torch.sum(z_mu.pow(2) + z_sigma.pow(2) - torch.log(z_sigma.pow(2)) - 1, dim=[1, 2, 3])
             kl_loss = torch.sum(kl_loss) / kl_loss.shape[0]
-            loss = r_loss*self.recon_weight + (self.kl_weight * kl_loss) + (self.perceptual_weight * p_loss)
+
+            w_loss = self.wiener_loss_fn(input.float(), recon.float())
+            
+            loss = (r_loss * self.recon_weight) + (self.kl_weight * kl_loss) + (self.wiener_weight * w_loss) + (self.perceptual_weight * p_loss)
 
             logits_fake = self.discriminator(recon.contiguous().float())[-1]
             generator_loss = self.adversarial_loss_fn(logits_fake, target_is_real=True, for_discriminator=False)
@@ -156,3 +177,12 @@ class AutoencoderRunner(BaseRunner):
         sample = self.model.decode(z)
         return sample, z
 
+
+
+def laplace2D(mesh, alpha=-0.2, beta=1.5):
+    """ Helper function for AWLoss """
+    xx, yy = mesh[:,:,0], mesh[:,:,1]
+    x = torch.sqrt(xx**2 + yy**2) 
+    T = 1 - torch.exp(-torch.abs(x) ** alpha) ** beta
+    T = scale2range(T, [0.05, 1.])
+    return T
