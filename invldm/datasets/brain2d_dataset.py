@@ -91,15 +91,18 @@ class Brain2DDataset(BaseDataset):
 
         # Read data
         y = self._read_npy_data(y_path)
-        y = y / 3000.
+        if self.args.mode == "vp":
+            y = y / 3000.
 
-        # Slowness if prompted
-        if self.args.slowness:
-            y = 1. / y
+            # Slowness if prompted
+            if self.args.slowness:
+                y = 1. / y
 
-        # Log if prompted
-        if self.args.log:
-            y = torch.log(y) + 1
+            # Log if prompted
+            if self.args.log:
+                y = torch.log(y) + 1
+        else:
+            y = y / torch.max(torch.abs(y))
         
         # Apply transform
         if self.transform:
