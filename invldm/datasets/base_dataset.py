@@ -27,9 +27,9 @@ class BaseDataset(Dataset):
         resize = kwargs.pop("resize", None)
         resize3d = kwargs.pop("resize", None)
         antialias = kwargs.pop("antialias", True)
-        to_tensor = kwargs.pop("to_tensor", True)
+        to_tensor = kwargs.pop("to_tensor", False)
         outliers = kwargs.pop("clip_outliers", False)
-        scale = kwargs.pop("scale", [0, 1])
+        scale = kwargs.pop("scale", False)
         normalise = kwargs.pop("normalise", False)
 
         transform_list = []
