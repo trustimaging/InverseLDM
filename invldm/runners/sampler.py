@@ -44,7 +44,7 @@ class Sampler():
         self.autoencoder_runner.model.eval()
 
         # Diffusion runner, load pre-trained, eval mode
-        assert args.diffusion_runner.sampling_only
+        assert args.diffusion.sampling_only
         self.diffusion_runner = DiffusionRunner(
             args=args.diffusion,
             args_run=args.run,

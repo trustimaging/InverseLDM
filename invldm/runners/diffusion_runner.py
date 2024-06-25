@@ -49,7 +49,8 @@ class DiffusionRunner(BaseRunner):
 
         with torch.no_grad():
             with torch.amp.autocast(str(self.device)):
-                z = self.autoencoder.encode_stage_2_inputs(next(iter(self.train_loader)).float().to(self.device))
+                x = (next(iter(self.train_loader))) if self.train_loader is not None else next(iter(self.sample_loader))
+                z = self.autoencoder.encode_stage_2_inputs(x.float().to(self.device))
         logging.info(f"Scaling factor set to {1/torch.std(z)}")
         self.scale_factor = 1 / torch.std(z)
 
