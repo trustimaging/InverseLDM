@@ -47,12 +47,15 @@ class DiffusionRunner(BaseRunner):
             scheduler_args = filter_kwargs_by_class_init(PNDMScheduler, namespace2dict(self.args.params))
             self.scheduler = PNDMScheduler(**scheduler_args)
 
-        with torch.no_grad():
-            with torch.amp.autocast(str(self.device)):
-                x = (next(iter(self.train_loader))) if self.train_loader is not None else next(iter(self.sample_loader))
-                z = self.autoencoder.encode_stage_2_inputs(x.float().to(self.device))
-        logging.info(f"Scaling factor set to {1/torch.std(z)}")
-        self.scale_factor = 1 / torch.std(z)
+        if not self.args.sampling_only: 
+            with torch.no_grad():
+                with torch.amp.autocast(str(self.device)):
+                    x = next(iter(self.train_loader))
+                    z = self.autoencoder.encode_stage_2_inputs(x.float().to(self.device))
+            logging.info(f"Scaling factor set to {1/torch.std(z)}")
+            self.scale_factor = 1 / torch.std(z)
+        else:
+            self.scale_factor = 1.
 
         self.inferer = LatentDiffusionInferer(self.scheduler, scale_factor=self.scale_factor)
 
