@@ -1,5 +1,5 @@
 from abc import abstractmethod
-
+import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
 from torchvision.transforms import Compose, Resize, Lambda, ToTensor, Normalize
@@ -25,6 +25,8 @@ class BaseDataset(Dataset):
 
     def _get_transform(self, **kwargs):
         resize = kwargs.pop("resize", None)
+        clip_min = kwargs.pop("clip_min", None)
+        clip_max = kwargs.pop("clip_max", None)
         resize3d = kwargs.pop("resize", None)
         antialias = kwargs.pop("antialias", True)
         to_tensor = kwargs.pop("to_tensor", False)
@@ -41,6 +43,8 @@ class BaseDataset(Dataset):
             transform_list.append(ToTensor())
         if outliers:
             transform_list.append(ClipOutliers(fence=outliers))
+        if clip_min or clip_max:
+            transform_list.append(Clip(clip_min, clip_max))
         if scale:
             scale = scale
             transform_list.append(Scale(scale=scale))
@@ -74,4 +78,17 @@ class ClipOutliers(nn.Module):
     
     def __repr__(self) -> str:
         detail = f"(fence={self.fence})"
+        return f"{self.__class__.__name__}{detail}"
+    
+class Clip(nn.Module):
+    def __init__(self, clip_min=None, clip_max=None):
+        super().__init__()
+        self.clip_min = clip_min
+        self.clip_max = clip_max
+
+    def forward(self, x):
+        return torch.clip(x, min=self.clip_min, max=self.clip_max)
+    
+    def __repr__(self) -> str:
+        detail = f"(min={self.clip_min}, max={self.clip_max})"
         return f"{self.__class__.__name__}{detail}"
