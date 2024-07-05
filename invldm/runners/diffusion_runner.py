@@ -23,6 +23,10 @@ class DiffusionRunner(BaseRunner):
         self.spatial_dims = kwargs.pop("spatial_dims")
         self.latent_channels = kwargs.pop("latent_channels")
         
+        in_channels = out_channels = self.latent_channels
+        if self.args.model.condition.mode == "concat":
+            in_channels += self.args.model.condition.in_channels 
+        
         try:
             self.num_inference_timesteps = self.args.params.num_inference_timesteps
         except AttributeError:
@@ -32,8 +36,8 @@ class DiffusionRunner(BaseRunner):
         _ = [model_kwargs.pop(key, None) for key in ["spatial_dims", "in_channels", "out_channels"]]
         self.model = DiffusionModelUNet(
             spatial_dims=self.spatial_dims,
-            in_channels=self.latent_channels,
-            out_channels=self.latent_channels,
+            in_channels=in_channels,
+            out_channels=out_channels,
             **model_kwargs
         ).to(self.device)
 
@@ -51,6 +55,8 @@ class DiffusionRunner(BaseRunner):
             with torch.no_grad():
                 with torch.amp.autocast(str(self.device)):
                     x = next(iter(self.train_loader))
+                    if isinstance(x, (list, tuple)):
+                        x, _ = x
                     z = self.autoencoder.encode_stage_2_inputs(x.float().to(self.device))
             logging.info(f"Scaling factor set to {1/torch.std(z)}")
             self.scale_factor = 1 / torch.std(z)
@@ -66,6 +72,7 @@ class DiffusionRunner(BaseRunner):
             optim_kwargs.pop("params", None)
             self.optimiser = torch.optim.Adam(self.model.parameters(), **optim_kwargs)
             self.scaler = torch.amp.GradScaler(self.device)
+                    
 
     def train_step(self, input, **kwargs):
         self.model.train()
@@ -82,9 +89,29 @@ class DiffusionRunner(BaseRunner):
             z_mu, z_sigma = self.autoencoder.encode(input)
             z = self.autoencoder.sampling(z_mu, z_sigma)
             noise = torch.randn_like(z).to(self.device)
+            
+            # Reshape or embed condition based on conditioning mode
+            if cond is not None:
+                cond_mode = self.args.model.condition.mode
+                if cond_mode =="concat":
+                    cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=self.args.model.condition.resize_mode, antialias=True)
+                elif cond_mode == "embbed_crossattn":
+                    raise NotImplementedError
+                elif cond_mode == "crossattn":
+                    pass
+            else:
+                cond_mode = "crossattn"
 
             timesteps = torch.randint(0, self.inferer.scheduler.num_train_timesteps, (z.shape[0],), device=z.device).long()
-            noise_pred = self.inferer(inputs=input, diffusion_model=self.model, noise=noise, timesteps=timesteps, autoencoder_model=self.autoencoder)
+            noise_pred = self.inferer(
+                inputs=input,
+                noise=noise,
+                timesteps=timesteps,
+                condition=cond,
+                mode=cond_mode,
+                diffusion_model=self.model,
+                autoencoder_model=self.autoencoder
+            )
             
         # Compute training loss
         loss = self.recon_loss_fn(noise_pred.float(), noise.float())
@@ -119,9 +146,29 @@ class DiffusionRunner(BaseRunner):
             z_mu, z_sigma = self.autoencoder.encode(input)
             z = self.autoencoder.sampling(z_mu, z_sigma)
             noise = torch.randn_like(z).to(self.device)
+            
+            # Reshape or embed condition based on conditioning mode
+            if cond is not None:
+                cond_mode = self.args.model.condition.mode
+                if cond_mode =="concat":
+                    cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=self.args.model.condition.resize_mode, antialias=True)
+                elif cond_mode == "embbed_crossattn":
+                    raise NotImplementedError
+                elif cond_mode == "crossattn":
+                    pass
+            else:
+                cond_mode = "crossattn"
 
             timesteps = torch.randint(0, self.inferer.scheduler.num_train_timesteps, (z.shape[0],), device=z.device).long()
-            noise_pred = self.inferer(inputs=input, diffusion_model=self.model, noise=noise, timesteps=timesteps, autoencoder_model=self.autoencoder)
+            noise_pred = self.inferer(
+                inputs=input,
+                noise=noise,
+                timesteps=timesteps,
+                condition=cond,
+                mode=cond_mode,
+                diffusion_model=self.model,
+                autoencoder_model=self.autoencoder
+            )
             
         # Compute validation loss
         loss = self.recon_loss_fn(noise_pred.float(), noise.float())
@@ -147,6 +194,18 @@ class DiffusionRunner(BaseRunner):
         z_mu, z_sigma = self.autoencoder.encode(input)
         z_ = self.autoencoder.sampling(z_mu, z_sigma)
         z = torch.randn_like(z_).to(self.device)
+            
+        # Reshape or embed condition based on conditioning mode
+        if cond is not None:
+            cond_mode = self.args.model.condition.mode
+            if cond_mode =="concat":
+                cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=self.args.model.condition.resize_mode, antialias=True)
+            elif cond_mode == "embbed_crossattn":
+                raise NotImplementedError
+            elif cond_mode == "crossattn":
+                pass
+        else:
+            cond_mode = "crossattn"
 
         # Set number of inference steps for scheduler
         self.scheduler.set_timesteps(num_inference_steps=num_inference_steps)
@@ -155,7 +214,12 @@ class DiffusionRunner(BaseRunner):
         logging.info("Sampling...")
         with torch.amp.autocast(str(self.device)):
             samples = self.inferer.sample(
-                input_noise=z, diffusion_model=self.model, scheduler=self.scheduler, autoencoder_model=self.autoencoder,
+                input_noise=z,
+                diffusion_model=self.model,
+                scheduler=self.scheduler,
+                autoencoder_model=self.autoencoder,
+                conditioning=cond,
+                mode=cond_mode,
                 **kwargs
             )
 

@@ -73,6 +73,9 @@ class Trainer():
             with torch.no_grad():
                 mu, sigma = self.diffusion_runner.autoencoder.encode(sample.unsqueeze(0).float())
                 z = self.diffusion_runner.autoencoder.sampling(mu, sigma)
+                if self.args.diffusion.model.condition.mode == "concat" and self.args.diffusion.model.condition.in_channels > 0:
+                    c = torch.randn([1, self.args.diffusion.model.condition.in_channels] + list(z.shape[2:])).to(z.device)
+                    z = torch.concat([z, c], dim=1)
                 t = torch.tensor([0]).repeat(z.shape[0])
             logging.info(summary(model=self.diffusion_runner.model, input_data=(z, t), device=self.diffusion_runner.device))
         
