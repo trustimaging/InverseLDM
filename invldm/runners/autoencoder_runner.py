@@ -60,8 +60,8 @@ class AutoencoderRunner(BaseRunner):
             self.adversarial_loss_fn = PatchAdversarialLoss(criterion=self.args.params.adversarial_mode)
             self.adversarial_weight = self.args.params.adversarial_weight
 
-            self.optimiser = torch.optim.Adam(self.model.parameters(), self.args.optim.lr, weight_decay=self.args.optim.weight_decay)
-            self.optimiser_d = torch.optim.Adam(self.discriminator.parameters(), self.args.optim.d_lr, weight_decay=self.args.optim.weight_decay)
+            self.optimiser = torch.optim.Adam(self.model.parameters(), self.args.optim.lr, weight_decay=self.args.optim.weight_decay, betas=self.args.optim.betas)
+            self.optimiser_d = torch.optim.Adam(self.discriminator.parameters(), self.args.optim.d_lr, weight_decay=self.args.optim.weight_decay, betas=self.args.optim.betas)
 
             self.scaler = torch.amp.GradScaler(self.device)
             self.scaler_d = torch.amp.GradScaler(self.device)
@@ -184,5 +184,5 @@ def laplace2D(mesh, alpha=-0.2, beta=1.5):
     xx, yy = mesh[:,:,0], mesh[:,:,1]
     x = torch.sqrt(xx**2 + yy**2) 
     T = 1 - torch.exp(-torch.abs(x) ** alpha) ** beta
-    T = scale2range(T, [0.05, 1.])
+    T = scale2range(T, [0.3, 1.])
     return T
