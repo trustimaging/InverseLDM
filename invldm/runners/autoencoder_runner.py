@@ -67,8 +67,6 @@ class AutoencoderRunner(BaseRunner):
             self.scaler_d = torch.amp.GradScaler(self.device)
 
     def train_step(self, input, **kwargs):
-        cond = kwargs.pop("condition", None)
-
         self.model.train()
         self.discriminator.train()
 
