@@ -8,8 +8,9 @@ from typing import Optional
 
 from . import BaseRunner
 
+from monai.networks.blocks import Convolution
 from generative.inferers import LatentDiffusionInferer
-from generative.networks.nets import DiffusionModelUNet
+from generative.networks.nets.diffusion_model_unet import DiffusionModelUNet, SpatialTransformer
 from generative.networks.schedulers import DDPMScheduler, DDIMScheduler, PNDMScheduler
 
 from ..utils.utils import namespace2dict, filter_kwargs_by_class_init
@@ -24,14 +25,23 @@ class DiffusionRunner(BaseRunner):
         self.latent_channels = kwargs.pop("latent_channels")
         
         in_channels = out_channels = self.latent_channels
-        if self.args.model.condition.mode == "concat":
-            in_channels += self.args.model.condition.in_channels 
         
-        try:
-            self.num_inference_timesteps = self.args.params.num_inference_timesteps
-        except AttributeError:
-            self.num_inference_timesteps = self.args.params.num_train_timesteps
+        # Condition layers
+        if self.args.model.condition.mode == "concat":
+            in_channels += self.args.model.condition.in_channels
+            self.cond_proj = get_condition_projection(
+                in_channels=self.args.model.condition.in_channels,
+                spatial_dims=self.args.model.condition.spatial_dims,
+                num_layers=self.args.model.condition.num_proj_layers,
+                num_head_channels=self.args.model.condition.num_proj_head_channels,
+                num_feature_channels=self.args.model.condition.num_proj_feature_channels,
+                norm_num_groups=self.args.model.condition.norm_proj_num_groups,
+                dropout=self.args.model.condition.proj_dropout,
+                norm_eps=self.args.model.condition.proj_norm_eps,
+                use_flash_attention=self.args.model.use_flash_attention,
+            ).to(self.device)
 
+        # Diffusion Model
         model_kwargs = filter_kwargs_by_class_init(DiffusionModelUNet, namespace2dict(self.args.model))
         _ = [model_kwargs.pop(key, None) for key in ["spatial_dims", "in_channels", "out_channels"]]
         self.model = DiffusionModelUNet(
@@ -41,6 +51,7 @@ class DiffusionRunner(BaseRunner):
             **model_kwargs
         ).to(self.device)
 
+        # Noise schedulers
         if self.args.params.sampler == "ddim":
             scheduler_args = filter_kwargs_by_class_init(DDIMScheduler, namespace2dict(self.args.params))
             self.scheduler = DDIMScheduler(**scheduler_args)
@@ -50,7 +61,14 @@ class DiffusionRunner(BaseRunner):
         elif self.args.params.sampler == "pndm":
             scheduler_args = filter_kwargs_by_class_init(PNDMScheduler, namespace2dict(self.args.params))
             self.scheduler = PNDMScheduler(**scheduler_args)
+        
+        # Num of inference Steps
+        try:
+            self.num_inference_timesteps = self.args.params.num_inference_timesteps
+        except AttributeError:
+            self.num_inference_timesteps = self.args.params.num_train_timesteps
 
+        # Latent scaling factor
         if not self.args.sampling_only: 
             with torch.no_grad():
                 with torch.amp.autocast(str(self.device)):
@@ -63,8 +81,10 @@ class DiffusionRunner(BaseRunner):
         else:
             self.scale_factor = 1.
 
+        # Inferer
         self.inferer = LatentDiffusionInferer(self.scheduler, scale_factor=self.scale_factor)
 
+        # Optimisers and loss functions
         if not self.args.sampling_only:
             self.recon_loss_fn = torch.nn.L1Loss() if self.args.params.recon_loss.lower() == "l1" else torch.nn.MSELoss()
             
@@ -90,10 +110,11 @@ class DiffusionRunner(BaseRunner):
             z = self.autoencoder.sampling(z_mu, z_sigma)
             noise = torch.randn_like(z).to(self.device)
             
-            # Reshape or embed condition based on conditioning mode
+            # Embed and/or reshape condition
             if cond is not None:
                 cond_mode = self.args.model.condition.mode
                 if cond_mode =="concat":
+                    cond = self.cond_proj(cond)
                     cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=self.args.model.condition.resize_mode, antialias=True)
                 elif cond_mode == "embbed_crossattn":
                     raise NotImplementedError
@@ -147,10 +168,11 @@ class DiffusionRunner(BaseRunner):
             z = self.autoencoder.sampling(z_mu, z_sigma)
             noise = torch.randn_like(z).to(self.device)
             
-            # Reshape or embed condition based on conditioning mode
+            # Embed and/or reshape condition
             if cond is not None:
                 cond_mode = self.args.model.condition.mode
                 if cond_mode =="concat":
+                    cond = self.cond_proj(cond)
                     cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=self.args.model.condition.resize_mode, antialias=True)
                 elif cond_mode == "embbed_crossattn":
                     raise NotImplementedError
@@ -195,10 +217,11 @@ class DiffusionRunner(BaseRunner):
         z_ = self.autoencoder.sampling(z_mu, z_sigma)
         z = torch.randn_like(z_).to(self.device)
             
-        # Reshape or embed condition based on conditioning mode
+        # Embed and/or reshape condition
         if cond is not None:
             cond_mode = self.args.model.condition.mode
             if cond_mode =="concat":
+                cond = self.cond_proj(cond)
                 cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=self.args.model.condition.resize_mode, antialias=True)
             elif cond_mode == "embbed_crossattn":
                 raise NotImplementedError
@@ -224,3 +247,54 @@ class DiffusionRunner(BaseRunner):
             )
 
         return samples, z
+
+
+def get_condition_projection(
+    in_channels,
+    spatial_dims,
+    num_layers,
+    num_head_channels,
+    num_feature_channels,
+    norm_num_groups,
+    dropout=0.,
+    norm_eps=0.000001,
+    use_flash_attention=False,
+) -> nn.Sequential :
+    if num_layers > 0:
+        return nn.Sequential(
+            # to feature channels
+            Convolution(
+                spatial_dims=spatial_dims,
+                in_channels=in_channels,
+                out_channels=num_feature_channels,
+                strides=1,
+                kernel_size=1,
+                padding=0,
+                conv_only=True,
+            ),
+            # transformer layers
+            SpatialTransformer(
+                spatial_dims=spatial_dims,
+                in_channels=num_feature_channels,
+                num_layers=num_layers,
+                num_attention_heads=num_feature_channels // num_head_channels,
+                num_head_channels=num_head_channels,
+                dropout=dropout,
+                norm_num_groups=norm_num_groups,
+                norm_eps=norm_eps,
+                use_flash_attention=use_flash_attention, 
+            ),
+            nn.GroupNorm(num_groups=norm_num_groups, num_channels=num_feature_channels, eps=norm_eps, affine=True),
+            nn.SiLU(),
+            # to in_channels
+            Convolution(
+                spatial_dims=spatial_dims,
+                in_channels=num_feature_channels,
+                out_channels=in_channels,
+                strides=1,
+                kernel_size=1,
+                padding=0,
+                conv_only=True,
+            ),
+        )
+    return nn.Identity()
