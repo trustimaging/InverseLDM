@@ -33,6 +33,8 @@ class BaseDataset(Dataset):
         outliers = kwargs.pop("clip_outliers", False)
         scale = kwargs.pop("scale", False)
         normalise = kwargs.pop("normalise", False)
+        flatten_start_dim = kwargs.pop("flatten_start_dim", 0)
+        flatten_end_dim = kwargs.pop("flatten_end_dim", -1)
 
         transform_list = []
         if resize:
@@ -51,7 +53,9 @@ class BaseDataset(Dataset):
         if normalise:
             transform_list.append(Normalize(normalise[0],
                                             normalise[1]))
-
+        if flatten_start_dim != 0 or flatten_end_dim != -1:
+            transform_list.append(nn.Flatten(flatten_start_dim, flatten_end_dim))
+            
         return Compose(transform_list)
     
 
