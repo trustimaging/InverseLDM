@@ -26,7 +26,21 @@ class DiffusionRunner(BaseRunner):
         
         in_channels = out_channels = self.latent_channels
         
-        # Condition layers
+        # Latent scaling factor
+        if not self.args.sampling_only: 
+            with torch.no_grad():
+                with torch.amp.autocast(str(self.device)):
+                    x = next(iter(self.train_loader))
+                    if isinstance(x, (list, tuple)):
+                        x, c = x
+                        c_dim = c.flatten(start_dim=2).shape[-1]
+                    z = self.autoencoder.encode_stage_2_inputs(x.float().to(self.device))
+            logging.info(f"Scaling factor set to {1/torch.std(z)}")
+            self.scale_factor = 1 / torch.std(z)
+        else:
+            self.scale_factor = 1.
+        
+        # Condition embedding layers for concatenation
         if self.args.model.condition.mode == "concat":
             in_channels += self.args.model.condition.in_channels
             self.cond_proj = get_condition_projection(
@@ -49,6 +63,7 @@ class DiffusionRunner(BaseRunner):
             in_channels=in_channels,
             out_channels=out_channels,
             with_conditioning=self.args.model.condition.mode=="crossattn",
+            cross_attention_dim=c_dim if "c_dim" in locals() else None,
             **model_kwargs
         ).to(self.device)
 
@@ -63,19 +78,6 @@ class DiffusionRunner(BaseRunner):
             self.num_inference_timesteps = self.args.params.num_inference_timesteps
         except AttributeError:
             self.num_inference_timesteps = self.args.params.num_train_timesteps
-
-        # Latent scaling factor
-        if not self.args.sampling_only: 
-            with torch.no_grad():
-                with torch.amp.autocast(str(self.device)):
-                    x = next(iter(self.train_loader))
-                    if isinstance(x, (list, tuple)):
-                        x, _ = x
-                    z = self.autoencoder.encode_stage_2_inputs(x.float().to(self.device))
-            logging.info(f"Scaling factor set to {1/torch.std(z)}")
-            self.scale_factor = 1 / torch.std(z)
-        else:
-            self.scale_factor = 1.
 
         # Inferer
         self.inferer = LatentDiffusionInferer(self.scheduler, scale_factor=self.scale_factor)
@@ -112,11 +114,10 @@ class DiffusionRunner(BaseRunner):
                 if cond_mode =="concat":
                     cond = self.cond_proj(cond)
                     cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=self.args.model.condition.resize_mode, antialias=True)
-                elif cond_mode == "embbed_crossattn":
-                    raise NotImplementedError
                 elif cond_mode == "crossattn":
-                    pass
+                    cond = cond.flatten(start_dim=2)
             else:
+                # Inferer cannot accept cond_mode as None :(
                 cond_mode = "crossattn"
 
             timesteps = torch.randint(0, self.inferer.scheduler.num_train_timesteps, (z.shape[0],), device=z.device).long()
@@ -170,10 +171,10 @@ class DiffusionRunner(BaseRunner):
                 if cond_mode =="concat":
                     cond = self.cond_proj(cond)
                     cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=self.args.model.condition.resize_mode, antialias=True)
-                elif cond_mode == "crossattn":
-                    # cond = cond.flatten(start_dim=1)
-                    pass
+                elif cond_mode == "crossattn": 
+                    cond = cond.flatten(start_dim=2)
             else:
+                # Inferer cannot accept cond_mode as None :(
                 cond_mode = "crossattn"
 
             timesteps = torch.randint(0, self.inferer.scheduler.num_train_timesteps, (z.shape[0],), device=z.device).long()
@@ -218,12 +219,11 @@ class DiffusionRunner(BaseRunner):
             if cond_mode =="concat":
                 cond = self.cond_proj(cond)
                 cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=self.args.model.condition.resize_mode, antialias=True)
-            elif cond_mode == "embbed_crossattn":
-                raise NotImplementedError
             elif cond_mode == "crossattn":
-                pass
-        else:
-            cond_mode = "crossattn"
+                    cond = cond.flatten(start_dim=2)
+            else:
+                # Inferer cannot accept cond_mode as None :(
+                cond_mode = "crossattn"
 
         # Set number of inference steps for scheduler
         self.scheduler.set_timesteps(num_inference_steps=num_inference_steps)
