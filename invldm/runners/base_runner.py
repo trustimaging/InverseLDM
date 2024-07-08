@@ -146,7 +146,6 @@ class BaseRunner(ABC):
                 self.discriminator.to(self.device)
 
             optim_path = os.path.splitext(path)[0]+"_optimiser.pth"
-            logging.critical("\n\n\n", os.path.isfile(optim_path), "\n\n\n")
             try:
                 try:
                     optim_states = torch.load(optim_path)
