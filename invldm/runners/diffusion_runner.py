@@ -319,8 +319,6 @@ def get_condition_projection(
                     num_attention_heads=num_feature_channels // num_head_channels,
                     num_head_channels=num_head_channels,
                     dropout=dropout,
-                    norm_num_groups=norm_num_groups,
-                    norm_eps=norm_eps,
                     upcast_attention=upcast_attention,
                     use_flash_attention=use_flash_attention,
                 )
