@@ -43,24 +43,20 @@ class DiffusionRunner(BaseRunner):
 
         # Diffusion Model
         model_kwargs = filter_kwargs_by_class_init(DiffusionModelUNet, namespace2dict(self.args.model))
-        _ = [model_kwargs.pop(key, None) for key in ["spatial_dims", "in_channels", "out_channels"]]
+        _ = [model_kwargs.pop(key, None) for key in ["spatial_dims", "in_channels", "out_channels", "with_conditioning"]]
         self.model = DiffusionModelUNet(
             spatial_dims=self.spatial_dims,
             in_channels=in_channels,
             out_channels=out_channels,
+            with_conditioning=self.args.model.condition.mode=="crossattn",
             **model_kwargs
         ).to(self.device)
 
         # Noise schedulers
-        if self.args.params.sampler == "ddim":
-            scheduler_args = filter_kwargs_by_class_init(DDIMScheduler, namespace2dict(self.args.params))
-            self.scheduler = DDIMScheduler(**scheduler_args)
-        elif self.args.params.sampler == "ddpm":
-            scheduler_args = filter_kwargs_by_class_init(DDPMScheduler, namespace2dict(self.args.params))
-            self.scheduler = DDPMScheduler(**scheduler_args)
-        elif self.args.params.sampler == "pndm":
-            scheduler_args = filter_kwargs_by_class_init(PNDMScheduler, namespace2dict(self.args.params))
-            self.scheduler = PNDMScheduler(**scheduler_args)
+        assert self.args.params.sampler.lower() in ["ddim", "ddpm", "pndm"]
+        scheduler_class = globals()[self.args.params.sampler.upper()+"Scheduler"]
+        scheduler_args = filter_kwargs_by_class_init(scheduler_class, namespace2dict(self.args.params))
+        self.scheduler = scheduler_class(**scheduler_args)
         
         # Num of inference Steps
         try:
@@ -174,9 +170,8 @@ class DiffusionRunner(BaseRunner):
                 if cond_mode =="concat":
                     cond = self.cond_proj(cond)
                     cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=self.args.model.condition.resize_mode, antialias=True)
-                elif cond_mode == "embbed_crossattn":
-                    raise NotImplementedError
                 elif cond_mode == "crossattn":
+                    # cond = cond.flatten(start_dim=1)
                     pass
             else:
                 cond_mode = "crossattn"
