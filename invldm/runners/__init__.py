@@ -5,3 +5,4 @@ from .trainer import *
 from .sampler import *
 from .utils import *
 from .losses import *
+from .inferers import *

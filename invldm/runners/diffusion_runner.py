@@ -7,9 +7,10 @@ import logging
 from typing import Optional
 
 from . import BaseRunner
+from .inferers import LatentDiffusionInferer
 
 from monai.networks.blocks import Convolution
-from generative.inferers import LatentDiffusionInferer
+# from generative.inferers import LatentDiffusionInferer
 from generative.networks.nets.diffusion_model_unet import DiffusionModelUNet, SpatialTransformer, BasicTransformerBlock
 from generative.networks.schedulers import DDPMScheduler, DDIMScheduler, PNDMScheduler
 
@@ -61,6 +62,14 @@ class DiffusionRunner(BaseRunner):
             # Add input dimension if condition mode is concatenation
             if self.args.model.condition.mode == "concat":
                 in_channels += self.args.model.condition.in_channels
+            
+            # Make condition depth equal to latent space depth for adding one to the other    
+            if self.args.model.condition.mode == "addition" and self.args.model.condition.in_channels != self.latent_channels :
+                self.cond_proj.append(Convolution(
+                spatial_dims=self.args.model.condition.spatial_dims,
+                in_channels=self.args.model.condition.in_channels,
+                out_channels=self.latent_channels,
+                strides=1, kernel_size=1, padding=0, conv_only=True,).to(self.device))
 
         # Diffusion Model
         model_kwargs = filter_kwargs_by_class_init(DiffusionModelUNet, namespace2dict(self.args.model))
@@ -119,13 +128,10 @@ class DiffusionRunner(BaseRunner):
             cond_mode = self.args.model.condition.mode
             if cond is not None and cond_mode is not None:     
                 cond = self.cond_proj(cond)
-                if cond_mode == "concat":
+                if cond_mode in ["concat", "addition"]:
                     cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=self.args.model.condition.resize_mode, antialias=True)
                 elif cond_mode == "crossattn":
                     cond = cond.flatten(start_dim=2)
-            else:
-                # Inferer cannot accept cond_mode as None :(
-                cond_mode = "crossattn"
 
             timesteps = torch.randint(0, self.inferer.scheduler.num_train_timesteps, (z.shape[0],), device=z.device).long()
             noise_pred = self.inferer(
@@ -176,13 +182,10 @@ class DiffusionRunner(BaseRunner):
             cond_mode = self.args.model.condition.mode
             if cond is not None and cond_mode is not None:             
                 cond = self.cond_proj(cond)
-                if cond_mode == "concat":
+                if cond_mode in ["concat", "addition"]:
                     cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=self.args.model.condition.resize_mode, antialias=True)
                 elif cond_mode == "crossattn":
                     cond = cond.flatten(start_dim=2)
-            else:
-                # Inferer cannot accept cond_mode as None :(
-                cond_mode = "crossattn"
                 
             timesteps = torch.randint(0, self.inferer.scheduler.num_train_timesteps, (z.shape[0],), device=z.device).long()
             noise_pred = self.inferer(
@@ -224,7 +227,7 @@ class DiffusionRunner(BaseRunner):
         cond_mode = self.args.model.condition.mode
         if cond is not None and cond_mode is not None:             
             cond = self.cond_proj(cond)
-            if cond_mode == "concat":
+            if cond_mode in ["concat", "addition"]:
                 cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=self.args.model.condition.resize_mode, antialias=True)
             elif cond_mode == "crossattn":
                 cond = cond.flatten(start_dim=2)
@@ -258,11 +261,13 @@ def get_condition_projection(
     num_head_channels,
     num_feature_channels,
     norm_num_groups,
+    out_channels=None,
     dropout=0.,
     norm_eps=0.000001,
     upcast_attention=False,
     use_flash_attention=False,
 ) -> nn.Sequential :
+    out_channels = in_channels if out_channels is None else out_channels
     if num_layers > 0:
         if spatial_dims >= 2:
             return nn.Sequential(
@@ -330,14 +335,14 @@ def get_condition_projection(
             Convolution(
                 spatial_dims=spatial_dims,
                 in_channels=num_feature_channels,
-                out_channels=in_channels,
+                out_channels=out_channels,
                 strides=1,
                 kernel_size=1,
                 padding=0,
                 conv_only=True,
             ),
         )     
-    return nn.Identity()
+    return nn.Sequential(nn.Identity())
 
 class Permute(nn.Module):
     def __init__(self, *args):
