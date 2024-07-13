@@ -4,14 +4,14 @@ import torch
 import torch.nn as nn
 import logging
 
-from typing import Optional
+import math
 
 from . import BaseRunner
 from .inferers import LatentDiffusionInferer
 
 from monai.networks.blocks import Convolution
 # from generative.inferers import LatentDiffusionInferer
-from generative.networks.nets.diffusion_model_unet import DiffusionModelUNet, SpatialTransformer, BasicTransformerBlock
+from generative.networks.nets.diffusion_model_unet import DiffusionModelUNet, DiffusionModelEncoder
 from generative.networks.schedulers import DDPMScheduler, DDIMScheduler, PNDMScheduler
 
 from ..utils.utils import namespace2dict, filter_kwargs_by_class_init
@@ -43,31 +43,45 @@ class DiffusionRunner(BaseRunner):
         else:
             self.scale_factor = 1.
         
-        # Condition embedding layers for concatenation
+        # Conditioner network
         if self.args.model.condition.mode is not None:
             assert "c" in locals(), (" Condition mode is passed but Dataset does not return condition. Ensure chosen Dataset class returns a tuple with condition as second element. ")
-            self.cond_proj = get_condition_projection(
-                in_channels=self.args.model.condition.in_channels,
-                spatial_dims=self.args.model.condition.spatial_dims,
-                num_layers=self.args.model.condition.num_proj_layers,
-                num_head_channels=self.args.model.condition.num_proj_head_channels,
-                num_feature_channels=self.args.model.condition.num_proj_feature_channels,
-                norm_num_groups=self.args.model.condition.norm_proj_num_groups,
-                dropout=self.args.model.condition.proj_dropout,
-                norm_eps=self.args.model.condition.proj_norm_eps,
-                upcast_attention=self.args.model.upcast_attention,
-                use_flash_attention=self.args.model.use_flash_attention,
-            ).to(self.device)
+            has_blocks = self.args.model.condition.num_res_blocks > 0 if self.args.model.condition.spatial_dims > 1 else self.args.model.condition.num_blocks > 0
+            if has_blocks:
+                if self.args.model.condition.spatial_dims > 1:
+                    cond_args = filter_kwargs_by_class_init(SpatialConditioner, namespace2dict(self.args.model.condition))
+                    cond_args.update(filter_kwargs_by_class_init(DiffusionModelEncoder, namespace2dict(self.args.model.condition)))
+
+                    # Force a few parameters
+                    cond_args["upcast_attention"] = self.args.model.upcast_attention
+                    cond_args["with_conditioning"] = False
+                    cond_args["num_class_embeds"] = None
+                    cond_args["cross_attention_dim"] = None
+                    
+                    self.cond_proj = nn.Sequential(SpatialConditioner(**cond_args)).to(self.device)
+                    
+                else:
+                    cond_args = filter_kwargs_by_class_init(TransformerConditioner, namespace2dict(self.args.model.condition))
+                    cond_args["d_model"] = c_dim
+                    self.cond_proj = nn.Sequential(TransformerConditioner(**cond_args)).to(self.device)
+                    
+                # Update c_dim for xatnn
+                with torch.no_grad():
+                    with torch.amp.autocast(str(self.device)):
+                        c_dim = self.cond_proj(c.float().to(self.device)).flatten(start_dim=2).shape[-1]
+            else:
+                self.cond_proj = nn.Identity().to(self.device)
+            
                         
             # Add input dimension if condition mode is concatenation
             if self.args.model.condition.mode == "concat":
-                in_channels += self.args.model.condition.in_channels
+                in_channels += self.args.model.condition.out_channels
             
             # Make condition depth equal to latent space depth for adding one to the other    
-            if self.args.model.condition.mode == "addition" and self.args.model.condition.in_channels != self.latent_channels :
+            if self.args.model.condition.mode == "addition" and self.args.model.condition.out_channels != self.latent_channels :
                 self.cond_proj.append(Convolution(
                 spatial_dims=self.args.model.condition.spatial_dims,
-                in_channels=self.args.model.condition.in_channels,
+                in_channels=self.args.model.condition.out_channels,
                 out_channels=self.latent_channels,
                 strides=1, kernel_size=1, padding=0, conv_only=True,).to(self.device))
 
@@ -128,10 +142,12 @@ class DiffusionRunner(BaseRunner):
             cond_mode = self.args.model.condition.mode
             if cond is not None and cond_mode is not None:     
                 cond = self.cond_proj(cond)
+                
                 if cond_mode in ["concat", "addition"]:
                     cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=self.args.model.condition.resize_mode, antialias=True)
                 elif cond_mode == "crossattn":
                     cond = cond.flatten(start_dim=2)
+                    
 
             timesteps = torch.randint(0, self.inferer.scheduler.num_train_timesteps, (z.shape[0],), device=z.device).long()
             noise_pred = self.inferer(
@@ -254,99 +270,190 @@ class DiffusionRunner(BaseRunner):
         return samples, z
 
 
-def get_condition_projection(
-    in_channels,
-    spatial_dims,
-    num_layers,
-    num_head_channels,
-    num_feature_channels,
-    norm_num_groups,
-    out_channels=None,
-    dropout=0.,
-    norm_eps=0.000001,
-    upcast_attention=False,
-    use_flash_attention=False,
-) -> nn.Sequential :
-    out_channels = in_channels if out_channels is None else out_channels
-    if num_layers > 0:
-        if spatial_dims >= 2:
-            return nn.Sequential(
-                # to feature channels
-                Convolution(
-                    spatial_dims=spatial_dims,
-                    in_channels=in_channels,
-                    out_channels=num_feature_channels,
-                    strides=1,
-                    kernel_size=1,
-                    padding=0,
-                    conv_only=True,
-                ),
-                # transformer layers
-                SpatialTransformer(
-                    spatial_dims=spatial_dims,
-                    in_channels=num_feature_channels,
-                    num_layers=num_layers,
-                    num_attention_heads=num_feature_channels // num_head_channels,
-                    num_head_channels=num_head_channels,
-                    dropout=dropout,
-                    norm_num_groups=norm_num_groups,
-                    norm_eps=norm_eps,
-                    upcast_attention=upcast_attention,
-                    use_flash_attention=use_flash_attention, 
-                ),
-                nn.GroupNorm(num_groups=norm_num_groups, num_channels=num_feature_channels, eps=norm_eps, affine=True),
-                nn.SiLU(),
-                # to in_channels
-                Convolution(
-                    spatial_dims=spatial_dims,
-                    in_channels=num_feature_channels,
-                    out_channels=in_channels,
-                    strides=1,
-                    kernel_size=1,
-                    padding=0,
-                    conv_only=True,
-                ),
-            )
-        return nn.Sequential(
-            Convolution(
-                spatial_dims=spatial_dims,
-                in_channels=in_channels,
-                out_channels=num_feature_channels,
-                strides=1,
-                kernel_size=1,
-                padding=0,
-                conv_only=True,
-            ),
-            Permute(0, 2, 1),
-            *[
-                BasicTransformerBlock(
-                    num_channels=num_feature_channels,
-                    num_attention_heads=num_feature_channels // num_head_channels,
-                    num_head_channels=num_head_channels,
-                    dropout=dropout,
-                    upcast_attention=upcast_attention,
-                    use_flash_attention=use_flash_attention,
-                )
-                for _ in range(num_layers)
-            ],
-            Permute(0, 2, 1),
-            nn.GroupNorm(num_groups=norm_num_groups, num_channels=num_feature_channels, eps=norm_eps, affine=True),
-            nn.SiLU(),
-            Convolution(
-                spatial_dims=spatial_dims,
-                in_channels=num_feature_channels,
-                out_channels=out_channels,
-                strides=1,
-                kernel_size=1,
-                padding=0,
-                conv_only=True,
-            ),
-        )     
-    return nn.Sequential(nn.Identity())
+class SpatialConditioner(DiffusionModelEncoder):
+    def __init__(self, **kwargs) -> None:
+        
+        num_res_blocks = kwargs.get("num_res_blocks")            
+        if isinstance(num_res_blocks, int):
+            num_res_blocks = [num_res_blocks] * len(kwargs.get("num_channels"))
+        kwargs["num_res_blocks"] = num_res_blocks
+            
+        super().__init__(**kwargs)
+        
+        self.conv_out = Convolution(
+            spatial_dims=kwargs.get("spatial_dims"),
+            in_channels=self.block_out_channels[-1],
+            out_channels=kwargs.get("out_channels"),
+            strides=1,
+            kernel_size=3,
+            padding=1,
+            conv_only=True,
+        )
+        
+        # Get time embed dim
+        self.time_embed_dim = self.block_out_channels[0] * 4
+    
+    def forward(self, x: torch.Tensor):
+        
+        # Null time embedding and condition as not relevant here
+        temb = torch.zeros((x.shape[0], self.time_embed_dim), dtype=x.dtype, device=x.device)
+        context = None
+        
+        h = self.conv_in(x)   
+            
+        for downsample_block in self.down_blocks:
+            h, _ = downsample_block(hidden_states=h, temb=temb, context=context)   
+        
+        out = self.conv_out(h)
+            
+        return out
+    
+class TransformerConditioner(nn.Module):
+    def __init__(self, num_blocks, transformer_num_layers, d_model, resize_factor=1, num_heads=8):
+        super(TransformerConditioner, self).__init__()
+        self.num_blocks = num_blocks
+        self.transformer_num_layers = transformer_num_layers
+        self.d_model = d_model
+        self.resize_factor = resize_factor
+        self.num_heads = num_heads
+        
+        # If resize_factor is an int, convert it to a list of same value repeated
+        if isinstance(resize_factor, int):
+            self.resize_factor = [resize_factor] * num_blocks
+            
+        if isinstance(num_heads, int):
+            self.num_heads = [num_heads] * num_blocks
 
-class Permute(nn.Module):
-    def __init__(self, *args):
-        super().__init__()
-        self.args = args
+        assert len(self.resize_factor) == num_blocks, \
+            "Length of resize_factor list must match num_blocks"
+            
+        assert len(self.num_heads) == num_blocks, \
+            "Length of num_heads list must match num_blocks"
+
+        # Embedding layer
+        self.embedding = nn.Linear(d_model, d_model)
+
+        # Transformer layers
+        self.transformer_blocks = nn.ModuleList([])
+        for i in range(self.num_blocks):
+            transformer_layers = nn.ModuleList([
+                nn.TransformerEncoderLayer(d_model=d_model//math.prod(self.resize_factor[:i]),
+                                        nhead=self.num_heads[i], activation="gelu")
+                for _ in range(transformer_num_layers)
+            ])
+            self.transformer_blocks.append(transformer_layers)
+            
     def forward(self, x):
-        return x.permute(*self.args)
+        # Apply embedding
+        x = self.embedding(x)
+
+        # Apply each transformer block with resizing at the end
+        for block, resize_factor in zip(self.transformer_blocks, self.resize_factor):
+            for layer in block:
+                x = layer(x)
+            x = self.apply_resize(x, resize_factor)
+        return x
+
+    def apply_resize(self, x, resize_factor):
+        new_size = x.size(-1) // resize_factor
+        return x.view(x.size(0), -1, new_size)
+    
+    
+    
+
+# def get_condition_projection(
+#     in_channels,
+#     spatial_dims,
+#     num_layers,
+#     num_head_channels,
+#     num_feature_channels,
+#     norm_num_groups,
+#     out_channels=None,
+#     dropout=0.,
+#     norm_eps=0.000001,
+#     upcast_attention=False,
+#     use_flash_attention=False,
+# ) -> nn.Sequential :
+#     out_channels = in_channels if out_channels is None else out_channels
+#     if num_layers > 0:
+#         if spatial_dims >= 2:
+#             return nn.Sequential(
+#                 # to feature channels
+#                 Convolution(
+#                     spatial_dims=spatial_dims,
+#                     in_channels=in_channels,
+#                     out_channels=num_feature_channels,
+#                     strides=1,
+#                     kernel_size=1,
+#                     padding=0,
+#                     conv_only=True,
+#                 ),
+#                 # transformer layers
+#                 SpatialTransformer(
+#                     spatial_dims=spatial_dims,
+#                     in_channels=num_feature_channels,
+#                     num_layers=num_layers,
+#                     num_attention_heads=num_feature_channels // num_head_channels,
+#                     num_head_channels=num_head_channels,
+#                     dropout=dropout,
+#                     norm_num_groups=norm_num_groups,
+#                     norm_eps=norm_eps,
+#                     upcast_attention=upcast_attention,
+#                     use_flash_attention=use_flash_attention, 
+#                 ),
+#                 nn.GroupNorm(num_groups=norm_num_groups, num_channels=num_feature_channels, eps=norm_eps, affine=True),
+#                 nn.SiLU(),
+#                 # to in_channels
+#                 Convolution(
+#                     spatial_dims=spatial_dims,
+#                     in_channels=num_feature_channels,
+#                     out_channels=in_channels,
+#                     strides=1,
+#                     kernel_size=1,
+#                     padding=0,
+#                     conv_only=True,
+#                 ),
+#             )
+#         return nn.Sequential(
+#             Convolution(
+#                 spatial_dims=spatial_dims,
+#                 in_channels=in_channels,
+#                 out_channels=num_feature_channels,
+#                 strides=1,
+#                 kernel_size=1,
+#                 padding=0,
+#                 conv_only=True,
+#             ),
+#             Permute(0, 2, 1),
+#             *[
+#                 BasicTransformerBlock(
+#                     num_channels=num_feature_channels,
+#                     num_attention_heads=num_feature_channels // num_head_channels,
+#                     num_head_channels=num_head_channels,
+#                     dropout=dropout,
+#                     upcast_attention=upcast_attention,
+#                     use_flash_attention=use_flash_attention,
+#                 )
+#                 for _ in range(num_layers)
+#             ],
+#             Permute(0, 2, 1),
+#             nn.GroupNorm(num_groups=norm_num_groups, num_channels=num_feature_channels, eps=norm_eps, affine=True),
+#             nn.SiLU(),
+#             Convolution(
+#                 spatial_dims=spatial_dims,
+#                 in_channels=num_feature_channels,
+#                 out_channels=out_channels,
+#                 strides=1,
+#                 kernel_size=1,
+#                 padding=0,
+#                 conv_only=True,
+#             ),
+#         )     
+#     return nn.Sequential(nn.Identity())
+
+# class Permute(nn.Module):
+#     def __init__(self, *args):
+#         super().__init__()
+#         self.args = args
+#     def forward(self, x):
+#         return x.permute(*self.args)

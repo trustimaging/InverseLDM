@@ -73,19 +73,25 @@ class Trainer():
             with torch.no_grad():
                 mu, sigma = self.diffusion_runner.autoencoder.encode(sample.unsqueeze(0).float())
                 z = self.diffusion_runner.autoencoder.sampling(mu, sigma)
-                t = torch.tensor([0]).repeat(z.shape[0])
+                t = torch.tensor([0]).repeat(z.shape[0])                
 
-                if self.args.diffusion.model.condition.mode == "concat":
-                    c = torch.randn([1, self.args.diffusion.model.condition.in_channels] + list(z.shape[2:])).to(z.device)
-                    z = torch.concat([z, c], dim=1)
-                    input_data = (z, t)
-                elif self.args.diffusion.model.condition.mode == "crossattn":
-                    c = cond.unsqueeze(0).flatten(start_dim=2)
-                    input_data = (z, t, c)
-                else:
-                    input_data = (z, t)
-                    
+                if cond is not None:
+                    c = self.diffusion_runner.cond_proj(cond.unsqueeze(0).float().to(z.device))
+                    if self.args.diffusion.model.condition.mode == "concat":
+                        c = torch.nn.functional.interpolate(c, z.shape[2:])
+                        z = torch.concat([z, c], dim=1)
+                        input_data = (z, t)
+                    elif self.args.diffusion.model.condition.mode == "crossattn":
+                        c = c.flatten(start_dim=2)
+                        input_data = (z, t, c)
+                    else:
+                        input_data = (z, t)
+
             logging.info(summary(model=self.diffusion_runner.model, input_data=input_data, device=self.diffusion_runner.device))
+            logging.info(f"\n\nLatent size: {z.shape[1:]}")
+            if "c" in locals():
+                logging.info(f"\nCondition (latent) size: {c.shape[1:]}\n\n")
+            
         
         logging.info(" ---- Autoencoder Training ---- ")
         self.autoencoder_runner.train()
