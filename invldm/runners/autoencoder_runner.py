@@ -10,6 +10,8 @@ from typing import Optional
 from . import BaseRunner
 from .utils import _instance_optimiser, _instance_lr_scheduler, set_requires_grad, _instance_autoencoder_loss_fn, _instance_discriminator_loss_fn
 
+from .losses import FocalFrequencyLoss
+
 from wiener_loss import WienerLoss
 
 from generative.losses.perceptual import PerceptualLoss
@@ -44,18 +46,26 @@ class AutoencoderRunner(BaseRunner):
                 self.recon_loss_fn = torch.nn.L1Loss() if self.args.params.recon_loss.lower() == "l1" else torch.nn.MSELoss()
 
             if self.perceptual_weight > 0.:
-                self.perceptual_loss_fn = PerceptualLoss(
-                    spatial_dims=self.args.model.spatial_dims,
-                    network_type=self.args.params.lpips_model
-                ).to(self.device)
+                if self.args.params.perceptual_loss == "lpips":
+                    self.perceptual_loss_fn = PerceptualLoss(
+                        spatial_dims=self.args.model.spatial_dims,
+                        network_type=self.args.params.lpips_model
+                    ).to(self.device)
+                if self.args.params.perceptual_loss == "ffl":
+                    self.perceptual_loss_fn = FocalFrequencyLoss()
             
             if self.wiener_weight > 0:
                 if self.args.params.wiener_penalty == "laplace":
                     penalty_function = partial(laplace2D, alpha=self.args.params.wiener_laplace_alpha, beta=self.args.params.wiener_laplace_beta)
-                elif self.args.params.wiener_penalty == "identity":
-                    penalty_function = "identity"
+                elif self.args.params.wiener_penalty in ["identity", "trainable"]:
+                    penalty_function = self.args.params.wiener_penalty
                 else:
                     raise AttributeError(f"Penalty function {self.args.params.wiener_penalty} is not avaiable. [laplace, identity]")
+                
+                x = next(iter(self.train_loader))
+                if isinstance(x, (list, tuple)):
+                    x, _ = x
+
                 self.wiener_loss_fn = WienerLoss(
                     method="fft",
                     filter_dim=self.args.params.wiener_filter_dim,
@@ -65,7 +75,12 @@ class AutoencoderRunner(BaseRunner):
                     penalty_function=penalty_function,
                     store_filters=False,
                     clamp_min=self.args.params.wiener_clamp_min,
+                    corr_norm=self.args.params.wiener_corr_norm,
+                    rel_epsilon=self.args.params.wiener_rel_epsilon,
+                    input_shape=x[0].shape,
                 )
+                if penalty_function == "trainable":
+                    self.optimiser.add_param_group(dict(params=self.wiener_loss_fn.parameters(), lr=100 / (2*(self.args.training.n_epochs) * len(self.train_loader))))
             
             if self.adversarial_weight > 0:
                 self.discriminator = PatchDiscriminator(
