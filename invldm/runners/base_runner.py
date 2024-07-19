@@ -217,7 +217,7 @@ class BaseRunner(ABC):
         else:
             plot_kwargs.update(dict(vmin=self.logging_args.plot.vmin, vmax=self.logging_args.plot.vmax, cmap=self.logging_args.plot.cmap))
 
-        fig = visualise_samples(x, **plot_kwargs)
+        fig = visualise_samples(x.float(), **plot_kwargs)
         plt.savefig(path)
         plt.close(fig)
         logging.info(f"Saved {self.args.name} {mode} {fig_type} figure in {path}")
