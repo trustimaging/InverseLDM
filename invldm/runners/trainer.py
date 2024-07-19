@@ -45,16 +45,17 @@ class Trainer():
             valid_loader=self.autoencoder_valid_dataloader,
         )
 
-        self.diffusion_runner = DiffusionRunner(
-            args=args.diffusion,
-            args_run=args.run,
-            args_logging=args.logging,
-            autoencoder=self.autoencoder_runner.model,
-            spatial_dims=args.autoencoder.model.spatial_dims,
-            latent_channels=args.autoencoder.model.latent_channels,
-            train_loader=self.diffusion_train_dataloader,
-            valid_loader=self.diffusion_valid_dataloader,
-        )
+        if self.args.diffusion.training.n_epochs > 0:
+            self.diffusion_runner = DiffusionRunner(
+                args=args.diffusion,
+                args_run=args.run,
+                args_logging=args.logging,
+                autoencoder=self.autoencoder_runner.model,
+                spatial_dims=args.autoencoder.model.spatial_dims,
+                latent_channels=args.autoencoder.model.latent_channels,
+                train_loader=self.diffusion_train_dataloader,
+                valid_loader=self.diffusion_valid_dataloader,
+            )
 
 
     def train(self):
@@ -96,8 +97,10 @@ class Trainer():
         logging.info(" ---- Autoencoder Training ---- ")
         self.autoencoder_runner.train()
         
-        del self.autoencoder_runner.discriminator
-        del self.autoencoder_runner.perceptual_loss_fn
+        if "discriminator" in self.autoencoder_runner.__dict__:
+            del self.autoencoder_runner.discriminator
+        if "perceptual_loss_fn" in self.autoencoder_runner.__dict__:
+            del self.autoencoder_runner.perceptual_loss_fn
 
         if self.args.diffusion.training.n_epochs > 0:
             logging.info(" ---- Diffusion Training ---- ")
