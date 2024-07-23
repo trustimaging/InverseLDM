@@ -206,6 +206,8 @@ class AutoencoderRunner(BaseRunner):
                 discriminator_loss = (loss_d_fake + loss_d_real) * 0.5
 
                 loss_d = self.adversarial_weight * discriminator_loss
+            else:
+                loss_d = torch.zeros_like(loss)
 
         # Output dictionary
         output = {

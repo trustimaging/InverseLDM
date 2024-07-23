@@ -102,6 +102,9 @@ class BaseRunner(ABC):
 
         torch.save(model_states, os.path.join(path, ckpt_name))
         torch.save(optim_states, os.path.join(path, optim_ckpt_name))
+        if "wiener_loss_fn" in self.__dict__:
+            if self.wiener_loss_fn.penalty_function == "trainable":
+                torch.save(self.wiener_loss_fn.W.detach().cpu(), os.path.join(path, f"wiener_loss_whitening_matrix_step_{self.steps}.pt"))
         logging.info(f"Saved {self.args.name.lower()} checkpoints at {path}")
         return None
 

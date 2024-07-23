@@ -148,4 +148,4 @@ def create_mask(shape, spacing, width, rotation=0., orientation="vertical"):
     repeat = list(shape)
     repeat[-1] = repeat[-2] = 1
     mask = mask.repeat(*repeat)
-    return mask
+    return mask.to(torch.uint8)
