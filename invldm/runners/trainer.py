@@ -66,6 +66,8 @@ class Trainer():
         sample = self.dataset[0]
         if isinstance(sample, tuple):
             sample, cond = sample
+        else:
+            cond = None
         sample = sample.to(self.autoencoder_runner.device)
         logging.info(summary(model=self.autoencoder_runner.model, input_data=sample.shape, device=self.autoencoder_runner.device))
 
@@ -87,6 +89,8 @@ class Trainer():
                         input_data = (z, t, c)
                     else:
                         input_data = (z, t)
+                else:
+                    input_data = (z, t)
 
             logging.info(summary(model=self.diffusion_runner.model, input_data=input_data, device=self.diffusion_runner.device))
             logging.info(f"\n\nLatent size: {z.shape[1:]}")
