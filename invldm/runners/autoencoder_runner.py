@@ -12,7 +12,12 @@ from .utils import _instance_optimiser, _instance_lr_scheduler, set_requires_gra
 
 from .losses import FocalFrequencyLoss
 
-from wiener_loss import WienerLoss
+try:
+    from wiener_loss import WienerLoss
+    HAS_WIENER = True
+except ImportError:
+    HAS_WIENER = False
+
 
 from generative.losses.perceptual import PerceptualLoss
 from generative.losses.adversarial_loss import PatchAdversarialLoss
@@ -54,7 +59,7 @@ class AutoencoderRunner(BaseRunner):
                 if self.args.params.perceptual_loss == "ffl":
                     self.perceptual_loss_fn = FocalFrequencyLoss()
             
-            if self.wiener_weight > 0:
+            if HAS_WIENER and self.wiener_weight > 0:
                 if self.args.params.wiener_penalty == "laplace":
                     penalty_function = partial(laplace2D, alpha=self.args.params.wiener_laplace_alpha, beta=self.args.params.wiener_laplace_beta)
                 elif self.args.params.wiener_penalty in ["identity", "trainable"]:
@@ -81,6 +86,8 @@ class AutoencoderRunner(BaseRunner):
                 )
                 if penalty_function == "trainable":
                     self.optimiser.add_param_group(dict(params=self.wiener_loss_fn.parameters(), lr=100 / (2*(self.args.training.n_epochs) * len(self.train_loader))))
+            if not HAS_WIENER and self.wiener_weight > 0:
+                raise ImportError("WienerLoss is not available. Please visit https://github.com/dpelacani/wienerloss to install it")
             
             if self.adversarial_weight > 0:
                 self.discriminator = PatchDiscriminator(
