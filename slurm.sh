@@ -5,7 +5,7 @@
 ##############################
 
 # Give your job a name, so you can recognize it in the queue overview
-#SBATCH --job-name=presbrainaxial
+#SBATCH --job-name=diffusion
 #SBATCH --partition=brain_main
 #SBATCH --qos=normal
 
