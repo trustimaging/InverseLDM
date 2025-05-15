@@ -73,8 +73,9 @@ class DiffusionWrapper(nn.Module):
                  linear_end=args.params.beta_end).to(device)
         
         if args.params.sampler.lower() == "ddim":
+            ddim_steps = args.params.ddim_sampling_steps if hasattr(args.params, 'ddim_sampling_steps') else args.params.num_diffusion_timesteps
             self.sampler = DDIMSampler(model=self.ldm,
-                            n_steps=args.params.num_diffusion_timesteps,
+                            n_steps=ddim_steps,
                             ddim_discretize="uniform",
                             ddim_eta=0.).to(device)
         elif args.params.sampler.lower() == "ddpm":
