@@ -47,6 +47,7 @@ autoencoder:
         div_loss: kl
         perceptual_loss: lpips
         adversarial_loss: true
+        spatial_dims: 2
         checkpoint: null
         # checkpoint: /home/dp4018/scripts/InverseLDM/exps/unconditioned256/uncond256_0/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
         # condition:
@@ -105,6 +106,7 @@ diffusion:
         num_transformer_layers: 3
         num_attn_heads: 8
         loss: l2
+        spatial_dims: 2
         # condition:
         #     in_channels: 1
         #     feature_channels: 64

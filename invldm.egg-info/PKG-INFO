@@ -1,0 +1,29 @@
+Metadata-Version: 2.2
+Name: invldm
+Version: 0.0.1
+Summary: Conditional Latent Diffusion Model for Inverse Problems
+Home-page: https://github.com/dekape/InverseLDM
+Author: Deborah Pelacani Cruz
+Author-email: deborah.pelacani@gmail.com
+License: MIT
+Project-URL: Source Code, https://github.com/dekape/InverseLDM
+Project-URL: Issue Tracker, https://github.com/dekape/InverseLDM/issues
+Platform: Linux
+Platform: Mac OS-X
+Platform: Unix
+License-File: LICENSE
+Dynamic: author
+Dynamic: author-email
+Dynamic: description
+Dynamic: home-page
+Dynamic: license
+Dynamic: platform
+Dynamic: project-url
+Dynamic: summary
+
+
+      Conditional Latent Diffusion Model (Rombach, Robin, et al, 2022) adapted
+      for physics-based inverse problems. Here the diffusion model is conditioned with the 
+      physical data that drives the inverse problem. The diffusion model then learns
+      the mapping between physical data to physical model in a noise-initialised generative
+      fashion. 
