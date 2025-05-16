@@ -73,6 +73,7 @@ autoencoder:
         ckpt_freq: 500
         ckpt_last_only: true
         sampling_freq: 0
+        warm_up_epochs: 5
 
     validation:
         split: 0.2

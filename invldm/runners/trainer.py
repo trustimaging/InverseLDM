@@ -69,7 +69,7 @@ class Trainer():
         else:
             cond = None
         sample = sample.to(self.autoencoder_runner.device)
-        logging.info(summary(model=self.autoencoder_runner.model, input_data=sample.shape, device=self.autoencoder_runner.device))
+        logging.info(summary(model=self.autoencoder_runner.model, input_size=sample.shape, device=self.autoencoder_runner.device))
 
         logging.info(" ---- Model - Diffusion ----")
         if self.args.diffusion.training.n_epochs > 0:
@@ -92,7 +92,7 @@ class Trainer():
                 else:
                     input_data = (z, t)
 
-            logging.info(summary(model=self.diffusion_runner.model, input_data=input_data, device=self.diffusion_runner.device))
+            logging.info(summary(model=self.diffusion_runner.model, input_size=input_data, device=self.diffusion_runner.device))
             logging.info(f"\n\nLatent size: {z.shape[1:]}")
             if "c" in locals():
                 logging.info(f"\nCondition (latent) size: {c.shape[1:]}\n\n")
