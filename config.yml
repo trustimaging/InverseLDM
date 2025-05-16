@@ -117,6 +117,7 @@ diffusion:
         num_attn_heads: 8
         loss: l2
         spatial_dims: 2
+        checkpoint: null
         condition:
             mode: null
 
