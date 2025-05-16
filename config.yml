@@ -20,6 +20,13 @@ data:
 
 logging:
     tool: JSON
+    plot:
+        vmin: 0.3
+        vmax: 1.0
+        cmap: oscar
+
+logging:
+    tool: JSON
 
 autoencoder:
     model:
