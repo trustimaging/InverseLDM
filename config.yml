@@ -55,6 +55,7 @@ autoencoder:
         #     feature_channels: 32
     params:
         div_weight: 0.00001
+        kl_weight: 1.0e-06
         perceptual_weight: 1.0
         recon_weight: 1.
         adversarial_weight: 0.1
