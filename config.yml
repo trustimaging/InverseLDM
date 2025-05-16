@@ -27,7 +27,7 @@ autoencoder:
     model:
         in_channels: 1
         out_channels: 1
-        feature_channels:
+        num_channels:
         - 64
         - 128
         - 128
@@ -41,7 +41,7 @@ autoencoder:
         - true
         - true
         embbeded_channels : 1
-        channels_mult: [1, 2, 2]
+        latent_channels: 3
         num_res_blocks: 2
         recon_loss: l1
         div_loss: kl
@@ -54,6 +54,7 @@ autoencoder:
         #     in_channels: 1
         #     feature_channels: 32
     params:
+        recon_loss: l1
         div_weight: 0.00001
         kl_weight: 1.0e-06
         perceptual_weight: 1.0
@@ -99,7 +100,7 @@ autoencoder:
 
 diffusion:
     model:
-        feature_channels:
+        num_channels:
         - 64
         - 128
         - 256
@@ -119,6 +120,7 @@ diffusion:
         #     feature_channels: 64
 
     params:
+        recon_loss: l2
         beta_start: 0.0015
         beta_end: 0.0205
         num_train_timesteps: 1000
