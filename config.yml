@@ -151,7 +151,7 @@ diffusion:
         lr: 0.00002
         betas:
         - 0.9
-        - null
+        - 0.999
         amsgrad: false
         eps: 0.00000001
         grad_clip: null
