@@ -65,6 +65,38 @@ class Brain2DDataset(BaseDataset):
         else:
             raise FileNotFoundError(f"Condition file {cond_path} does not exist in neither .npy or .npy.gz format")
 
+    def _extract_slice_number(self, data_path):
+        """
+        Extract the slice number from a filename with pattern like vp_996782_sagittal_168.npy
+        Returns a tensor with the slice number normalized to [0,1] based on the expected range (138, 199)
+        """
+        # Extract filename from path
+        filename = os.path.basename(data_path)
+        # Remove extension
+        basename = os.path.splitext(filename)[0]
+        # Split by underscore
+        parts = basename.split('_')
+        # Get the last part which should be the slice number
+        try:
+            slice_num = float(parts[-1])
+            
+            # Define the expected range
+            min_slice, max_slice = 138, 199
+            slice_range = max_slice - min_slice
+            
+            # Normalize to [0,1] based on the expected range
+            normalized_value = (slice_num - min_slice) / slice_range
+            
+            # Clamp to [0,1] in case the slice is outside the expected range
+            normalized_value = max(0.0, min(1.0, normalized_value))
+            
+            # Create tensor and ensure it's a valid float value
+            slice_tensor = torch.tensor([[[normalized_value]]], dtype=torch.float32)
+            return slice_tensor
+        except (IndexError, ValueError) as e:
+            # Fallback to a default value if parsing fails
+            print(f"Warning: Could not extract slice number from {filename}, using default value. Error: {e}")
+            return torch.tensor([[[0.5]]], dtype=torch.float32)
     
     def _read_npy_data(self, data_path):
         # Load .npy or .npy.gz data into torch tensor
@@ -96,8 +128,17 @@ class Brain2DDataset(BaseDataset):
         if self.transform:
             y = self.transform(y)
 
-        # Get condition, apply steps above
-        if self.args.condition.mode is not None and self.args.condition.path is not None:
+        # Special case for slice_number condition mode
+        if self.args.condition.mode == "slice_number":
+            # Extract the slice number directly from the filename without any transformation
+            cond = self._extract_slice_number(y_path)
+            # Apply transform if needed, but carefully
+            if self.cond_transform and len(self.cond_transform.transforms) > 0:
+                # Skip transforms for slice_number as they might introduce issues
+                pass
+            return y, cond
+        # Regular condition handling with external files
+        elif self.args.condition.mode is not None and self.args.condition.path is not None:
             cond_path = self._get_condition_path(y_path)
             cond = self._read_npy_data(cond_path)
             cond = cond / torch.abs(torch.max(cond))

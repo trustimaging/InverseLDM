@@ -1,6 +1,6 @@
 data:
     dataset: Brain2D
-    data_path: /raid/dverschu/2d_slices_dataset/vp_slices/sagittal
+    data_path: /Users/andreidanila/code/sonalis/InverseLDM/data
     mode: vp
     maxsamples: null
     slowness: false
@@ -10,15 +10,14 @@ data:
     to_tensor: false
     normalise: false
     condition:
-        mode: null
-        # mode: stack-trace-pca-100x100
-        # path: "/home/dp4018/data/ultrasound-data/Ultrasound-Vp-sagittal-data/acoustic/data/stack_pca/data"    
-        # resize: null
-        # scale: [0., 1.]
-        # antialias: true
-        # clip_outliers: null
-        # to_tensor: false
-        # normalise: false
+        mode: slice_number
+        # For slice_number, we extract directly from filename, no need for transforms
+        resize: null
+        scale: null  # Don't scale the condition, we already normalized it in the extraction method
+        antialias: false
+        clip_outliers: null
+        to_tensor: false
+        normalise: false
 
 logging:
     tool: JSON
@@ -49,9 +48,9 @@ autoencoder:
         adversarial_loss: true
         checkpoint: null
         # checkpoint: /home/dp4018/scripts/InverseLDM/exps/unconditioned256/uncond256_0/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
-        # condition:
-        #     in_channels: 1
-        #     feature_channels: 32
+        condition:
+            in_channels: 1
+            feature_channels: 32
     params:
         div_weight: 0.00001
         perceptual_weight: 1.0
@@ -105,9 +104,9 @@ diffusion:
         num_transformer_layers: 3
         num_attn_heads: 8
         loss: l2
-        # condition:
-        #     in_channels: 1
-        #     feature_channels: 64
+        condition:
+            in_channels: 1
+            feature_channels: 64
 
     params:
         beta_start: 0.0015

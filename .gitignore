@@ -3,3 +3,5 @@ exps/
 **/__pycache__/
 .vscode/
 ./config.yml
+data
+*.npy
