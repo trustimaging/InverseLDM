@@ -42,9 +42,7 @@ autoencoder:
         embbeded_channels : 1
         latent_channels: 3
         num_res_blocks: 2
-        recon_loss: l1
         div_loss: kl
-        perceptual_loss: lpips
         adversarial_loss: true
         spatial_dims: 2
         checkpoint: null
@@ -57,6 +55,8 @@ autoencoder:
         div_weight: 0.00001
         kl_weight: 1.0e-06
         perceptual_weight: 1.0
+        perceptual_loss: lpips
+        lpips_mode: vgg
         recon_weight: 1.
         adversarial_weight: 0.1
         lpips_model: alex
