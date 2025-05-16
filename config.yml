@@ -63,6 +63,11 @@ autoencoder:
         disc_n_layers: 2
         disc_feature_channels: 32
         adversarial_mode: lsgan
+        wiener_weight: 0.0
+        adversarial_mode: least_squares
+        disc_n_layers: 2
+        disc_feature_channels: 16
+        adversarial_weight: 0.1
 
     training:
         batch_size: 32
