@@ -45,9 +45,7 @@ autoencoder:
         latent_channels: 3
         div_loss: kl
         adversarial_loss: true
-        
         checkpoint: null
-        use_flash_attention: true
         # checkpoint: /home/dp4018/scripts/InverseLDM/exps/unconditioned256/uncond256_0/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
         # condition:
         #     in_channels: 1
