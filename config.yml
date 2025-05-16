@@ -25,9 +25,6 @@ logging:
         vmax: 1.0
         cmap: oscar
 
-logging:
-    tool: JSON
-
 autoencoder:
     model:
         spatial_dims: 2
