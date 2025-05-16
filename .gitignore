@@ -1,11 +1,9 @@
 exps/
 configs/
 notebooks/
-slurm*
 *.ipynb
 **/__pycache__/
 .vscode/
-*.yml
 nohup.out
 data/
 *.npy

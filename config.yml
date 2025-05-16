@@ -1,0 +1,151 @@
+data:
+    dataset: Brain2D
+    data_path: /raid/dverschu/2d_slices_dataset/vp_slices/sagittal
+    mode: vp
+    maxsamples: null
+    slowness: false
+    resize: [256, 256]
+    scale: [0, 1.]
+    clip_outliers: outer
+    to_tensor: false
+    normalise: false
+    condition:
+        mode: null
+        # mode: stack-trace-pca-100x100
+        # path: "/home/dp4018/data/ultrasound-data/Ultrasound-Vp-sagittal-data/acoustic/data/stack_pca/data"    
+        # resize: null
+        # scale: [0., 1.]
+        # antialias: true
+        # clip_outliers: null
+        # to_tensor: false
+        # normalise: false
+
+logging:
+    tool: JSON
+
+autoencoder:
+    model:
+        in_channels: 1
+        out_channels: 1
+        feature_channels:
+        - 64
+        - 128
+        - 128
+        z_channels:
+        - 3
+        - 64
+        - 64
+        attention_levels:
+        - true
+        - true
+        - true
+        - true
+        embbeded_channels : 1
+        channels_mult: [1, 2, 2]
+        num_res_blocks: 2
+        recon_loss: l1
+        div_loss: kl
+        perceptual_loss: lpips
+        adversarial_loss: true
+        checkpoint: null
+        # checkpoint: /home/dp4018/scripts/InverseLDM/exps/unconditioned256/uncond256_0/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
+        # condition:
+        #     in_channels: 1
+        #     feature_channels: 32
+    params:
+        div_weight: 0.00001
+        perceptual_weight: 1.0
+        recon_weight: 1.
+        adversarial_weight: 0.1
+        lpips_model: alex
+        disc_n_layers: 2
+        disc_feature_channels: 32
+        adversarial_mode: lsgan
+
+    training:
+        batch_size: 32
+        n_epochs: 10
+        save_recon_freq: 500
+        ckpt_freq: 500
+        ckpt_last_only: true
+        sampling_freq: 0
+
+    validation:
+        split: 0.2
+        batch_size: 32
+        freq: 50
+        save_recon_freq: 500
+
+    optim:
+        weight_decay: 0.0001
+        optimiser: "Adam"
+        lr: 0.0001
+        beta1: 0.9
+        beta2: 0.999
+        amsgrad: false
+        eps: 0.00000001
+        grad_clip: null
+
+        lr_scheduler:
+            scheduler: null
+
+diffusion:
+    model:
+        feature_channels:
+        - 64
+        - 128
+        - 256
+        - 512
+        num_res_blocks: 2
+        attention_levels:
+        - false
+        - true
+        - true
+        - true
+        num_transformer_layers: 3
+        num_attn_heads: 8
+        loss: l2
+        # condition:
+        #     in_channels: 1
+        #     feature_channels: 64
+
+    params:
+        beta_start: 0.0015
+        beta_end: 0.0205
+        num_train_timesteps: 1000
+        num_inference_timesteps: 50
+        latent_scaling_factor: 1.
+        sampler: ddim
+
+    training:
+        batch_size: 4
+        n_epochs: 10
+        ckpt_freq: 100
+        ckpt_last_only: true
+        sampling_freq: 5000
+        sampling_temperature: 0.5
+        sampling_skip_steps: 0
+
+    validation:
+        split: 0.2
+        batch_size: 4
+        batch_size: 4
+        freq: 150
+        sampling_freq: 5000
+
+    sampling:
+        batch_size: 8
+        output: last_only
+        n_samples: 10
+
+    optim:
+        weight_decay: 0.0001
+        optimiser: "Adam"
+        lr: 0.00002
+        beta1: 0.9
+        amsgrad: false
+        eps: 0.00000001
+        grad_clip: null
+
+        lr_scheduler:
+            scheduler: null
