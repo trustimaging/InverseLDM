@@ -11,14 +11,12 @@ data:
     normalise: false
     condition:
         mode: null
-        # mode: stack-trace-pca-100x100
-        # path: "/home/dp4018/data/ultrasound-data/Ultrasound-Vp-sagittal-data/acoustic/data/stack_pca/data"    
-        # resize: null
-        # scale: [0., 1.]
-        # antialias: true
-        # clip_outliers: null
-        # to_tensor: false
-        # normalise: false
+        resize: null
+        antialias: false
+        scale: null
+        clip_outliers: false
+        to_tensor: false
+        normalise: false
 
 logging:
     tool: JSON
