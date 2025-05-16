@@ -39,7 +39,6 @@ autoencoder:
         - true
         - true
         - true
-        - true
         embbeded_channels : 1
         latent_channels: 3
         num_res_blocks: 2
