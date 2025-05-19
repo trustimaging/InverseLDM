@@ -48,7 +48,8 @@ autoencoder:
         latent_channels: 3
         div_loss: kl
         adversarial_loss: true
-        checkpoint: "/raid/dverschu/InverseLDM/exps/test_conditioning/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth"
+        checkpoint: null
+        # checkpoint: /home/dp4018/scripts/InverseLDM/exps/unconditioned256/uncond256_0/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
         condition:
             mode: concat
 
@@ -73,7 +74,7 @@ autoencoder:
 
     training:
         batch_size: 32
-        n_epochs: 0
+        n_epochs: 10
         save_recon_freq: 500
         ckpt_freq: 500
         ckpt_last_only: true
