@@ -203,8 +203,10 @@ class DiffusionRunner(BaseRunner):
                 
                 if cond_mode in ["concat", "addition"]:
                     orig_shape = cond.shape
-                    cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=self.args.model.condition.resize_mode, antialias=True)
-                    print(f"DEBUG-DIFFUSION: Interpolated condition from {orig_shape} to {cond.shape}")
+                    resize_mode = self.args.model.condition.resize_mode
+                    use_antialias = resize_mode in ["bilinear", "bicubic"]
+                    cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=resize_mode, antialias=use_antialias if use_antialias else None)
+                    print(f"DEBUG-DIFFUSION: Interpolated condition from {orig_shape} to {cond.shape} using mode={resize_mode}, antialias={use_antialias if use_antialias else None}")
                     
                     # Check for NaN after interpolation
                     if torch.isnan(cond).any():
@@ -291,7 +293,9 @@ class DiffusionRunner(BaseRunner):
             if cond is not None and cond_mode is not None:             
                 cond = self.cond_proj(cond)
                 if cond_mode in ["concat", "addition"]:
-                    cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=self.args.model.condition.resize_mode, antialias=True)
+                    resize_mode = self.args.model.condition.resize_mode
+                    use_antialias = resize_mode in ["bilinear", "bicubic"]
+                    cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=resize_mode, antialias=use_antialias if use_antialias else None)
                 elif cond_mode == "crossattn":
                     cond = cond.flatten(start_dim=2)
                 
@@ -336,7 +340,9 @@ class DiffusionRunner(BaseRunner):
         if cond is not None and cond_mode is not None:             
             cond = self.cond_proj(cond)
             if cond_mode in ["concat", "addition"]:
-                cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=self.args.model.condition.resize_mode, antialias=True)
+                resize_mode = self.args.model.condition.resize_mode
+                use_antialias = resize_mode in ["bilinear", "bicubic"]
+                cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=resize_mode, antialias=use_antialias if use_antialias else None)
             elif cond_mode == "crossattn":
                 cond = cond.flatten(start_dim=2)
         else:
