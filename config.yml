@@ -48,6 +48,7 @@ autoencoder:
         latent_channels: 3
         div_loss: kl
         adversarial_loss: true
+        checkpoint: null
         condition:
             mode: concat
 
