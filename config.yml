@@ -141,7 +141,7 @@ diffusion:
             cross_attention_dim: 64
             dropout: 0.0
             norm_num_groups: 32
-            norm_eps: 1e-6
+            norm_eps: 0.000001
 
     params:
         recon_loss: l2
