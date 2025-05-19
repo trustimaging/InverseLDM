@@ -30,4 +30,4 @@
 source /raid/dverschu/miniconda3/etc/profile.d/conda.sh
 conda activate diff2
 
-python /raid/dverschu/InverseLDM/debug_train.py --config /raid/dverschu/InverseLDM/config.yml --name test_conditioning --overwrite -y --gpu_ids [0,1,2,3,4,5,6,7] 
+python /raid/dverschu/InverseLDM/train.py --config /raid/dverschu/InverseLDM/config.yml --name test_conditioning --overwrite -y --gpu_ids [0,1,2,3,4,5,6,7] 
