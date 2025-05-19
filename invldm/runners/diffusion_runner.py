@@ -25,6 +25,9 @@ class DiffusionRunner(BaseRunner):
         self.spatial_dims = kwargs.pop("spatial_dims")
         self.latent_channels = kwargs.pop("latent_channels")
         
+        print("DEBUG-DIFFUSION: Initializing DiffusionRunner")
+        print(f"DEBUG-DIFFUSION: latent_channels={self.latent_channels}, spatial_dims={self.spatial_dims}")
+        
         in_channels = out_channels = self.latent_channels
         
         # Sample
@@ -32,22 +35,29 @@ class DiffusionRunner(BaseRunner):
         if isinstance(x, (list, tuple)):
             x, c = x
             c_dim = c.flatten(start_dim=2).shape[-1]
+            print(f"DEBUG-DIFFUSION: Got condition in loader, shape={c.shape}, c_dim={c_dim}")
+        else:
+            print("DEBUG-DIFFUSION: No condition in loader")
         
         # Latent scaling factor
         if not self.args.sampling_only: 
             with torch.no_grad():
                 with torch.amp.autocast(str(self.device)):
                     z = self.autoencoder.encode_stage_2_inputs(x.float().to(self.device))
-            logging.info(f"Scaling factor set to {1/torch.std(z)}")
-            self.scale_factor = 1 / torch.std(z)
+            sf = 1 / torch.std(z)
+            print(f"DEBUG-DIFFUSION: Scaling factor set to {sf}, z.shape={z.shape}, z_mean={z.mean().item()}, z_std={torch.std(z).item()}")
+            self.scale_factor = sf
         else:
             self.scale_factor = 1.
+            print(f"DEBUG-DIFFUSION: Using default scaling factor {self.scale_factor}")
         
         # Conditioner network
         if self.args.model.condition.mode is not None:
+            print(f"DEBUG-DIFFUSION: Setting up condition mode: {self.args.model.condition.mode}")
             assert "c" in locals(), (" Condition mode is passed but Dataset does not return condition. Ensure chosen Dataset class returns a tuple with condition as second element. ")
             has_blocks = self.args.model.condition.num_res_blocks > 0 if self.args.model.condition.spatial_dims > 1 else self.args.model.condition.num_blocks > 0
             if has_blocks:
+                print(f"DEBUG-DIFFUSION: Condition has blocks: num_res_blocks={self.args.model.condition.num_res_blocks}")
                 if self.args.model.condition.spatial_dims > 1:
                     cond_args = filter_kwargs_by_class_init(SpatialConditioner, namespace2dict(self.args.model.condition))
                     cond_args.update(filter_kwargs_by_class_init(DiffusionModelEncoder, namespace2dict(self.args.model.condition)))
@@ -58,27 +68,36 @@ class DiffusionRunner(BaseRunner):
                     cond_args["num_class_embeds"] = None
                     cond_args["cross_attention_dim"] = None
                     
+                    print(f"DEBUG-DIFFUSION: Creating SpatialConditioner with args: {cond_args}")
                     self.cond_proj = nn.Sequential(SpatialConditioner(**cond_args)).to(self.device)
                     
                 else:
                     cond_args = filter_kwargs_by_class_init(TransformerConditioner, namespace2dict(self.args.model.condition))
                     cond_args["d_model"] = c_dim
+                    print(f"DEBUG-DIFFUSION: Creating TransformerConditioner with args: {cond_args}")
                     self.cond_proj = nn.Sequential(TransformerConditioner(**cond_args)).to(self.device)
                     
                 # Update c_dim for xatnn
                 with torch.no_grad():
                     with torch.amp.autocast(str(self.device)):
-                        c_dim = self.cond_proj(c.float().to(self.device)).flatten(start_dim=2).shape[-1]
+                        projected_c = self.cond_proj(c.float().to(self.device))
+                        print(f"DEBUG-DIFFUSION: Test condition projection: input={c.shape}, output={projected_c.shape}")
+                        c_dim = projected_c.flatten(start_dim=2).shape[-1]
+                        print(f"DEBUG-DIFFUSION: Updated c_dim={c_dim}")
             else:
+                print("DEBUG-DIFFUSION: Using Identity for condition projection")
                 self.cond_proj = nn.Identity().to(self.device)
             
                         
             # Add input dimension if condition mode is concatenation
             if self.args.model.condition.mode == "concat":
+                old_in_channels = in_channels
                 in_channels += self.args.model.condition.out_channels
+                print(f"DEBUG-DIFFUSION: Concat mode - in_channels increased from {old_in_channels} to {in_channels} (added {self.args.model.condition.out_channels})")
             
             # Make condition depth equal to latent space depth for adding one to the other    
-            if self.args.model.condition.mode == "addition" and self.args.model.condition.out_channels != self.latent_channels :
+            if self.args.model.condition.mode == "addition" and self.args.model.condition.out_channels != self.latent_channels:
+                print(f"DEBUG-DIFFUSION: Addition mode - adding 1x1 conv to match channels: {self.args.model.condition.out_channels} -> {self.latent_channels}")
                 self.cond_proj.append(Convolution(
                 spatial_dims=self.args.model.condition.spatial_dims,
                 in_channels=self.args.model.condition.out_channels,
@@ -88,6 +107,7 @@ class DiffusionRunner(BaseRunner):
         # Diffusion Model
         model_kwargs = filter_kwargs_by_class_init(DiffusionModelUNet, namespace2dict(self.args.model))
         _ = [model_kwargs.pop(key, None) for key in ["spatial_dims", "in_channels", "out_channels", "with_conditioning"]]
+        print(f"DEBUG-DIFFUSION: Creating DiffusionModelUNet: in_channels={in_channels}, out_channels={out_channels}")
         self.model = DiffusionModelUNet(
             spatial_dims=self.spatial_dims,
             in_channels=in_channels,
@@ -101,6 +121,7 @@ class DiffusionRunner(BaseRunner):
         assert self.args.params.sampler.lower() in ["ddim", "ddpm", "pndm"]
         scheduler_class = globals()[self.args.params.sampler.upper()+"Scheduler"]
         scheduler_args = filter_kwargs_by_class_init(scheduler_class, namespace2dict(self.args.params))
+        print(f"DEBUG-DIFFUSION: Creating {self.args.params.sampler.upper()} scheduler with args: {scheduler_args}")
         self.scheduler = scheduler_class(**scheduler_args)
         
         # Num of inference Steps
@@ -110,6 +131,7 @@ class DiffusionRunner(BaseRunner):
             self.num_inference_timesteps = self.args.params.num_train_timesteps
 
         # Inferer
+        print(f"DEBUG-DIFFUSION: Creating LatentDiffusionInferer with scale_factor={self.scale_factor}")
         self.inferer = LatentDiffusionInferer(self.scheduler, scale_factor=self.scale_factor)
 
         # Optimisers and loss functions
@@ -118,7 +140,17 @@ class DiffusionRunner(BaseRunner):
             
             optim_kwargs = filter_kwargs_by_class_init(torch.optim.Adam, namespace2dict(self.args.optim))
             optim_kwargs.pop("params", None)
-            self.optimiser = torch.optim.Adam(self.model.parameters(), **optim_kwargs)
+            print(f"DEBUG-DIFFUSION: Creating optimizer {self.args.optim.optimiser} with params: {optim_kwargs}")
+            
+            # Create the correct optimizer based on the name
+            if self.args.optim.optimiser.lower() == "adam":
+                self.optimiser = torch.optim.Adam(self.model.parameters(), **optim_kwargs)
+            elif self.args.optim.optimiser.lower() == "adamw":
+                self.optimiser = torch.optim.AdamW(self.model.parameters(), **optim_kwargs)
+            else:
+                self.optimiser = torch.optim.Adam(self.model.parameters(), **optim_kwargs)
+                print(f"DEBUG-DIFFUSION: WARNING - Unknown optimizer {self.args.optim.optimiser}, falling back to Adam")
+                
             self.scaler = torch.amp.GradScaler(self.device)
                     
 
@@ -131,25 +163,62 @@ class DiffusionRunner(BaseRunner):
 
         # Get condition from kwargs
         cond = kwargs.pop("condition", None)
+        if cond is not None:
+            print(f"DEBUG-DIFFUSION: train_step - Got condition, shape={cond.shape}")
+            # Check for NaN in condition
+            if torch.isnan(cond).any():
+                print("DEBUG-DIFFUSION: WARNING - NaN detected in input condition")
+        else:
+            print("DEBUG-DIFFUSION: train_step - No condition provided")
 
         # Forward pass: predict model noise based on condition
         with torch.amp.autocast(str(self.device)):
             z_mu, z_sigma = self.autoencoder.encode(input)
+            
+            # Check for NaN in encoding
+            if torch.isnan(z_mu).any() or torch.isnan(z_sigma).any():
+                print("DEBUG-DIFFUSION: WARNING - NaN detected in autoencoder encoding")
+                print(f"DEBUG-DIFFUSION: z_mu stats: min={z_mu.min().item()}, max={z_mu.max().item()}, mean={z_mu.mean().item()}")
+                print(f"DEBUG-DIFFUSION: z_sigma stats: min={z_sigma.min().item()}, max={z_sigma.max().item()}, mean={z_sigma.mean().item()}")
+            
             z = self.autoencoder.sampling(z_mu, z_sigma)
+            
+            # Check for NaN in latent
+            if torch.isnan(z).any():
+                print("DEBUG-DIFFUSION: WARNING - NaN detected in autoencoder latent")
+                print(f"DEBUG-DIFFUSION: z stats: min={z.min().item()}, max={z.max().item()}, mean={z.mean().item()}")
+            
             noise = torch.randn_like(z).to(self.device)
             
             # Project and reshape condition
             cond_mode = self.args.model.condition.mode
-            if cond is not None and cond_mode is not None:     
+            if cond is not None and cond_mode is not None:
+                print(f"DEBUG-DIFFUSION: Processing condition for mode={cond_mode}")
                 cond = self.cond_proj(cond)
                 
+                # Check for NaN after projection
+                if torch.isnan(cond).any():
+                    print("DEBUG-DIFFUSION: WARNING - NaN detected after condition projection")
+                    print(f"DEBUG-DIFFUSION: Condition after projection: shape={cond.shape}")
+                
                 if cond_mode in ["concat", "addition"]:
+                    orig_shape = cond.shape
                     cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=self.args.model.condition.resize_mode, antialias=True)
+                    print(f"DEBUG-DIFFUSION: Interpolated condition from {orig_shape} to {cond.shape}")
+                    
+                    # Check for NaN after interpolation
+                    if torch.isnan(cond).any():
+                        print("DEBUG-DIFFUSION: WARNING - NaN detected after condition interpolation")
+                        
                 elif cond_mode == "crossattn":
                     cond = cond.flatten(start_dim=2)
-                    
+            else:
+                print("DEBUG-DIFFUSION: No condition processing needed")
 
             timesteps = torch.randint(0, self.inferer.scheduler.num_train_timesteps, (z.shape[0],), device=z.device).long()
+            print(f"DEBUG-DIFFUSION: Generated timesteps: min={timesteps.min().item()}, max={timesteps.max().item()}")
+            
+            print(f"DEBUG-DIFFUSION: Calling inferer with mode={cond_mode}")
             noise_pred = self.inferer(
                 inputs=input,
                 noise=noise,
@@ -160,19 +229,42 @@ class DiffusionRunner(BaseRunner):
                 autoencoder_model=self.autoencoder
             )
             
+            # Check for NaN in model output
+            if torch.isnan(noise_pred).any():
+                print("DEBUG-DIFFUSION: WARNING - NaN detected in model output (noise_pred)")
+                print(f"DEBUG-DIFFUSION: noise_pred stats: shape={noise_pred.shape}")
+            
         # Compute training loss
         loss = self.recon_loss_fn(noise_pred.float(), noise.float())
         
+        # Check for NaN in loss
+        if torch.isnan(loss):
+            print("DEBUG-DIFFUSION: ERROR - NaN detected in loss")
+            print(f"DEBUG-DIFFUSION: Loss: {loss.item() if not torch.isnan(loss) else 'NaN'}")
+        
         # Zero grad and back propagation
         self.optimiser.zero_grad(set_to_none=True)
-        self.scaler.scale(loss).backward()
-        self.scaler.step(self.optimiser)
-        self.scaler.update()
-
-        # Gradient Clipping
-        # if self.args.optim.grad_clip:
-        #     torch.nn.utils.clip_grad_norm_(self.model.parameters(),
-        #                                    self.args.optim.grad_clip)
+        
+        try:
+            self.scaler.scale(loss).backward()
+            
+            # Check for NaN in gradients
+            for name, param in self.model.named_parameters():
+                if param.grad is not None and torch.isnan(param.grad).any():
+                    print(f"DEBUG-DIFFUSION: WARNING - NaN detected in gradient for {name}")
+                
+            # Apply gradient clipping if configured
+            if self.args.optim.grad_clip:
+                print(f"DEBUG-DIFFUSION: Applying gradient clipping with max_norm={self.args.optim.grad_clip}")
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.optim.grad_clip)
+            
+            self.scaler.step(self.optimiser)
+            self.scaler.update()
+            
+        except RuntimeError as e:
+            print(f"DEBUG-DIFFUSION: ERROR in backward/optimizer - {str(e)}")
+            import traceback
+            print(traceback.format_exc())
 
         # Output dictionary update
         output.update({
@@ -357,9 +449,6 @@ class TransformerConditioner(nn.Module):
     def apply_resize(self, x, resize_factor):
         new_size = x.size(-1) // resize_factor
         return x.view(x.size(0), -1, new_size)
-    
-    
-    
 
 # def get_condition_projection(
 #     in_channels,

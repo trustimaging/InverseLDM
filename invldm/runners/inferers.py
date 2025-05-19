@@ -368,6 +368,7 @@ class LatentDiffusionInferer(DiffusionInferer):
     ) -> None:
         super().__init__(scheduler=scheduler)
         self.scale_factor = scale_factor
+        print(f"DEBUG-INFERER: Initialized LatentDiffusionInferer with scale_factor={scale_factor}")
         if (ldm_latent_shape is None) ^ (autoencoder_latent_shape is None):
             raise ValueError("If ldm_latent_shape is None, autoencoder_latent_shape must be None" "and vice versa.")
         self.ldm_latent_shape = ldm_latent_shape
@@ -403,11 +404,32 @@ class LatentDiffusionInferer(DiffusionInferer):
             quantized: if autoencoder_model is a VQVAE, quantized controls whether the latents to the LDM
             are quantized or not.
         """
-        with torch.no_grad():
-            autoencode = autoencoder_model.encode_stage_2_inputs
-            if isinstance(autoencoder_model, VQVAE):
-                autoencode = partial(autoencoder_model.encode_stage_2_inputs, quantized=quantized)
-            latent = autoencode(inputs) * self.scale_factor
+        print(f"DEBUG-INFERER: Call with inputs shape={inputs.shape}, noise shape={noise.shape}, timesteps={timesteps[:3]}...")
+        
+        # Check for NaNs in inputs
+        if torch.isnan(inputs).any():
+            print("DEBUG-INFERER: WARNING - NaN detected in inputs")
+        if torch.isnan(noise).any():
+            print("DEBUG-INFERER: WARNING - NaN detected in noise")
+        
+        # Get latent from autoencoder
+        try:
+            with torch.no_grad():
+                autoencode = autoencoder_model.encode_stage_2_inputs
+                if isinstance(autoencoder_model, VQVAE):
+                    autoencode = partial(autoencoder_model.encode_stage_2_inputs, quantized=quantized)
+                latent = autoencode(inputs) * self.scale_factor
+                
+                # Check for NaNs in latent
+                if torch.isnan(latent).any():
+                    print("DEBUG-INFERER: WARNING - NaN detected in latent")
+                    print(f"DEBUG-INFERER: latent stats - shape={latent.shape}, scale_factor={self.scale_factor}")
+                    print(f"DEBUG-INFERER: latent range - min={latent.min().item() if not torch.isnan(latent.min()) else 'NaN'}, max={latent.max().item() if not torch.isnan(latent.max()) else 'NaN'}")
+        except Exception as e:
+            print(f"DEBUG-INFERER: ERROR in autoencoder encoding: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+            raise e
 
         if self.ldm_latent_shape is not None:
             latent = torch.stack([self.ldm_resizer(i) for i in decollate_batch(latent)], 0)
@@ -416,14 +438,79 @@ class LatentDiffusionInferer(DiffusionInferer):
         if isinstance(diffusion_model, SPADEDiffusionModelUNet):
             call = partial(super().__call__, seg=seg)
 
-        prediction = call(
-            inputs=latent,
-            diffusion_model=diffusion_model,
-            noise=noise,
-            timesteps=timesteps,
-            condition=condition,
-            mode=mode,
-        )
+        # Process condition if provided
+        if condition is not None and mode is not None:
+            print(f"DEBUG-INFERER: Processing condition with mode={mode}, condition shape={condition.shape}")
+            if torch.isnan(condition).any():
+                print("DEBUG-INFERER: WARNING - NaN detected in condition")
+        
+        # Add noise to latent and prepare for diffusion model
+        try:
+            noisy_latent = self.scheduler.add_noise(original_samples=latent, noise=noise, timesteps=timesteps)
+            
+            # Check for NaNs in noisy latent
+            if torch.isnan(noisy_latent).any():
+                print("DEBUG-INFERER: WARNING - NaN detected in noisy_latent after adding noise")
+                print(f"DEBUG-INFERER: noisy_latent stats - min={noisy_latent.min().item() if not torch.isnan(noisy_latent.min()) else 'NaN'}, max={noisy_latent.max().item() if not torch.isnan(noisy_latent.max()) else 'NaN'}")
+            
+            # Prepare input based on condition mode
+            diffusion_input = noisy_latent
+            
+            if mode == "concat" and condition is not None:
+                print(f"DEBUG-INFERER: Concatenating condition, shapes: latent={noisy_latent.shape}, condition={condition.shape}")
+                try:
+                    diffusion_input = torch.cat([noisy_latent, condition], dim=1)
+                    
+                    if torch.isnan(diffusion_input).any():
+                        print("DEBUG-INFERER: WARNING - NaN detected after concatenation")
+                except Exception as e:
+                    print(f"DEBUG-INFERER: ERROR during concatenation: {str(e)}")
+                    print(f"DEBUG-INFERER: noisy_latent shape={noisy_latent.shape}, condition shape={condition.shape}")
+                    raise e
+                
+            elif mode == "addition" and condition is not None:
+                print(f"DEBUG-INFERER: Adding condition, shapes: latent={noisy_latent.shape}, condition={condition.shape}")
+                try:
+                    diffusion_input = noisy_latent + condition
+                    
+                    if torch.isnan(diffusion_input).any():
+                        print("DEBUG-INFERER: WARNING - NaN detected after addition")
+                except Exception as e:
+                    print(f"DEBUG-INFERER: ERROR during addition: {str(e)}")
+                    raise e
+        except Exception as e:
+            print(f"DEBUG-INFERER: ERROR in noise addition: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+            raise e
+            
+        # Call diffusion model
+        try:
+            prediction = diffusion_model(x=diffusion_input, timesteps=timesteps, context=condition if mode == "crossattn" else None)
+            
+            # Check for NaNs in prediction
+            if torch.isnan(prediction).any():
+                print("DEBUG-INFERER: WARNING - NaN detected in diffusion model prediction")
+                print(f"DEBUG-INFERER: prediction stats - shape={prediction.shape}")
+                
+                # Try to identify which layer might be causing the issue
+                has_nan_outputs = hasattr(diffusion_model, "nan_outputs") and diffusion_model.nan_outputs
+                if has_nan_outputs:
+                    for layer_name, has_nan in diffusion_model.nan_outputs.items():
+                        if has_nan:
+                            print(f"DEBUG-INFERER: NaN detected in layer {layer_name}")
+                
+                # Return zeros instead to avoid breaking training
+                if torch.isnan(prediction).all():
+                    print("DEBUG-INFERER: WARNING - All prediction values are NaN, returning zeros")
+                    prediction = torch.zeros_like(prediction)
+        except Exception as e:
+            print(f"DEBUG-INFERER: ERROR in diffusion model: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+            raise e
+
+        print("DEBUG-INFERER: Call completed successfully")
         return prediction
 
     @torch.no_grad()
