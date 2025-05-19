@@ -10,6 +10,7 @@ data:
     to_tensor: false
     normalise: false
     condition:
+        path: null
         mode: slice
         resize: [256, 256]
         antialias: false
