@@ -7,3 +7,4 @@ notebooks/
 nohup.out
 data/
 *.npy
+*.png

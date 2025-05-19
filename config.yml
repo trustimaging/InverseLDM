@@ -10,11 +10,11 @@ data:
     to_tensor: false
     normalise: false
     condition:
-        mode: null
-        resize: null
+        mode: slice
+        resize: [256, 256]
         antialias: false
-        scale: null
-        clip_outliers: false
+        scale: [0, 1.]
+        clip_outliers: outer
         to_tensor: false
         normalise: false
 
@@ -50,7 +50,8 @@ autoencoder:
         checkpoint: null
         # checkpoint: /home/dp4018/scripts/InverseLDM/exps/unconditioned256/uncond256_0/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
         condition:
-            mode: null
+            mode: concat
+
     params:
         recon_loss: l1
         div_weight: 0.00001
@@ -119,7 +120,7 @@ diffusion:
         spatial_dims: 2
         checkpoint: null
         condition:
-            mode: null
+            mode: crossattn
 
     params:
         recon_loss: l2
@@ -150,6 +151,7 @@ diffusion:
         batch_size: 8
         output: last_only
         n_samples: 10
+        slice_values: [140, 160, 180, 200]  # Specific slice numbers to use during sampling
 
     optim:
         weight_decay: 0.0001

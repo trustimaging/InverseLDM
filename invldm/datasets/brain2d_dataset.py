@@ -3,6 +3,7 @@ import gzip
 import numpy as np
 import torch
 from . import BaseDataset
+from ..utils.slice_condition import extract_slice_number, create_slice_condition
 
 
 class Brain2DDataset(BaseDataset):
@@ -110,13 +111,23 @@ class Brain2DDataset(BaseDataset):
         # y = y / y.max()
 
         # Get condition, apply steps above
-        if self.args.condition.mode is not None and self.args.condition.path is not None:
-            cond_path = self._get_condition_path(y_path)
-            cond = self._read_npy_data(cond_path)
-            cond = cond / torch.abs(torch.max(cond))
-            if self.cond_transform:
-                cond = self.cond_transform(cond)
-            return y, cond
+        if self.args.condition.mode is not None:
+            # Special handling for slice number conditioning
+            if self.args.condition.mode == "slice":
+                # Create a condition tensor based on the slice number from filename
+                cond_shape = (1, y.shape[1], y.shape[2])  # Single channel with same spatial dimensions
+                cond = create_slice_condition(y_path, cond_shape)
+                if self.cond_transform:
+                    cond = self.cond_transform(cond)
+                return y, cond
+            # Standard path-based conditioning
+            elif self.args.condition.path is not None:
+                cond_path = self._get_condition_path(y_path)
+                cond = self._read_npy_data(cond_path)
+                cond = cond / torch.abs(torch.max(cond))
+                if self.cond_transform:
+                    cond = self.cond_transform(cond)
+                return y, cond
         return y
 
     def __len__(self):

@@ -7,12 +7,19 @@ import numpy as np
 import torch
 import sys
 import logging
+import datetime
+import warnings
 
 from monai.config import print_config as print_monai_config
 from monai.utils import set_determinism
 
 from .utils import dict2namespace, namespace2dict, namespcae_summary_ticket
 from ..loggers.utils import _instance_logger
+
+from pathlib import Path
+from glob import glob
+from argparse import Namespace
+from dotmap import DotMap
 
 
 def setup_train():
@@ -484,3 +491,202 @@ def setup_model_tracker(args):
     else:
         args.logging.tracker = None
     return args
+
+
+def _load_config(yaml_path, exp_name=None):
+    """Load yaml configuration settings."""
+    with open(yaml_path, 'r') as yaml_file:
+        try:
+            yaml_config = yaml.safe_load(yaml_file)
+        except yaml.YAMLError as exc:
+            print(exc)
+
+    # Return a Python object instead of a dictionary for cleaner access to params
+    config = DotMap(yaml_config, _dynamic=False)
+
+    # Add default params if not provided
+    config = _add_default_params(config, exp_name)
+
+    # Override some config values with gpu device and experiment folder
+    config = _override_values(config)
+
+    # Set correct ckpt paths for training/sampling
+    config = _set_ckpt_paths(config)
+
+    return config
+
+def _add_default_params(config, exp_name=None):
+    """Fill in default values not passed in yaml config."""
+
+    # Add defaults of sampling
+    config.sampling_only = False
+
+    # Add defaults for condition config
+    config.data.setdefault("condition", {})
+    config.data.condition.setdefault("mode", None)
+    config.data.condition.setdefault("path", None)
+    config.data.condition.setdefault("resize_mode", "bilinear")
+
+    # if condition requested but path not passed, look at working directory
+    if config.data.condition.mode is not None and config.data.condition.path is None:
+        config.data.condition.path = os.getcwd()
+
+    # add experiment (defaults to time)
+    if exp_name is None:
+        curr_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        exp_name = curr_time
+    config.experiment = exp_name
+
+    # Device settings
+    if not hasattr(config, "device"):
+        if torch.cuda.is_available():
+            config.device = "cuda:0"
+        else:
+            config.device = "cpu"
+    os.environ["CUDA_VISIBLE_DEVICES"] = config.device.split(":")[-1]
+    config.device = "cuda:0" if "cuda" in config.device else "cpu"
+
+    if not hasattr(config, "run"):
+        config.run = {}
+    if not hasattr(config.run, "deterministic"):
+        config.run.deterministic = True
+    if not hasattr(config.run, "seed"):
+        config.run.seed = 42
+    
+    # Add LR schedulers
+    for model_name in ["autoencoder", "diffusion"]:
+        # Skip if model section doesn't exist
+        if model_name not in config:
+            continue
+            
+        if not hasattr(config[model_name].model, "condition"):
+            config[model_name].model.condition = {}
+        if not hasattr(config[model_name].model.condition, "mode"):
+            config[model_name].model.condition.mode = None
+        if not hasattr(config[model_name].model.condition, "resize_mode"):
+            config[model_name].model.condition.resize_mode = "bilinear"
+
+        # For the diffusion model, add setup for more complex conditioning
+        if model_name == "diffusion" and config[model_name].model.condition.mode == "crossattn":
+            # Set defaults for cross-attention conditioning
+            if not hasattr(config[model_name].model.condition, "num_res_blocks"):
+                config[model_name].model.condition.num_res_blocks = 2
+            if not hasattr(config[model_name].model.condition, "spatial_dims"):
+                config[model_name].model.condition.spatial_dims = config[model_name].model.spatial_dims
+            if not hasattr(config[model_name].model.condition, "in_channels"):
+                config[model_name].model.condition.in_channels = 1  # Default for slice number
+            if not hasattr(config[model_name].model.condition, "out_channels"):
+                config[model_name].model.condition.out_channels = 64  # Default embedding size
+            if not hasattr(config[model_name].model.condition, "num_channels"):
+                config[model_name].model.condition.num_channels = [64, 128, 128]
+            if not hasattr(config[model_name].model.condition, "attention_levels"):
+                config[model_name].model.condition.attention_levels = [False, False, True]
+                
+        # check and adjust dataset files, only required if conditioned
+        if config.data.condition.mode is not None:
+            pass
+
+        # check lr scheduler has seed
+        if "optim" in config[model_name]:
+            if "lr_scheduler" not in config[model_name].optim:
+                config[model_name].optim.lr_scheduler = {}
+            if "seed" not in config[model_name].optim.lr_scheduler:
+                config[model_name].optim.lr_scheduler.seed = config.run.seed
+            if "scheduler" not in config[model_name].optim.lr_scheduler:
+                config[model_name].optim.lr_scheduler.scheduler = None
+
+    return config
+
+def _override_values(config):
+    """Override config values when needed."""
+    if hasattr(config, "device"):
+        # Device settings
+        if torch.cuda.is_available():
+            device_idx = "0" if ":" not in config.device else config.device.split(":")[-1]
+            os.environ["CUDA_VISIBLE_DEVICES"] = device_idx
+            config.device = "cuda:0"  # Always use first enumerated device
+        else:
+            os.environ["CUDA_VISIBLE_DEVICES"] = ""
+            config.device = "cpu"
+            warnings.warn("No GPU detected. Using CPU...")
+
+    # Override submodels
+    for model_name in ["autoencoder", "diffusion"]:
+        # Skip if model section doesn't exist
+        if model_name not in config:
+            continue
+            
+        # Set model name
+        config[model_name].name = model_name
+            
+    return config
+
+def _set_ckpt_paths(config):
+    """Set checkpoint paths for training/sampling."""   
+
+    # set absolute path to file via experiment folder
+    experiment_folder = str(os.path.join(os.getcwd(), "exps", 
+                            config.experiment))
+    for model_name in ["autoencoder", "diffusion"]:
+        # Skip if model section doesn't exist
+        if model_name not in config:
+            continue
+                
+        # Set paths for training/sampling
+        if config.sampling_only:
+            # check if checkpoint provided in YAML file and if it exists
+            if hasattr(config[model_name].model, "checkpoint") and \
+                    config[model_name].model.checkpoint is not None:
+                chkpt_file = config[model_name].model.checkpoint
+                if not os.path.isfile(chkpt_file):
+                    # Check if file exists with cwd as prefix
+                    tmp_chkpt_file = os.path.join(
+                        os.getcwd(), config[model_name].model.checkpoint)
+                    if os.path.isfile(tmp_chkpt_file):
+                        chkpt_file = tmp_chkpt_file
+                    else:
+                        # Check all "*model_name*/checkpoints/" files
+                        glob_pattern = os.path.join(
+                            "**", model_name, "checkpoints", "*.pth")
+                        all_ckpt_files = list(
+                            Path(os.getcwd()).rglob(glob_pattern[-5:]))
+                        if all_ckpt_files:
+                            # Take newest (sorted by name == time encoded)
+                            chkpt_file = sorted(all_ckpt_files)[-1]
+                        else:
+                            # Default, model to not found later
+                            chkpt_file = None
+                # TODO: change code below with elif.
+                # Should be:
+                # if invalid_path and valid_path_with_getcwd:
+                #     ...
+                # elif invalid_path and valid_glob_pattern:
+                #     ...
+                # else:
+                #     chkpt_file = None
+                
+                config[model_name].model.checkpoint = chkpt_file
+        else: # not config.sampling_only
+            # Get autencoder checkpoint from experiments
+            config[model_name].experiment_folder = str(os.path.join(
+                experiment_folder, model_name))
+        
+    return config
+
+
+def _get_config(yaml_path=None, exp_name=None, config_dict=None):
+    """Get configuration settings from configuration yaml file."""
+    if config_dict is not None:
+        config = DotMap(config_dict, _dynamic=False)
+        config = _add_default_params(config, exp_name)
+        config = _override_values(config)
+        config = _set_ckpt_paths(config)
+        return config
+
+    # Need to provide either the dict or a file
+    assert yaml_path is not None, "Need to provide either " \
+                                  "yaml path or config dict"
+
+    # Return a Python object instead of a dictionary for cleaner access to params
+    config = _load_config(yaml_path, exp_name)
+    return config
