@@ -116,9 +116,9 @@ diffusion:
         - true
         num_transformer_layers: 1
         num_attn_heads: 8
-        loss: l1
+        loss: l2
         spatial_dims: 2
-        upcast_attention: true
+        upcast_attention: false
         use_flash_attention: false
         transformer_num_layers: 1
         dropout: 0.0
@@ -127,31 +127,23 @@ diffusion:
             mode: concat
             spatial_dims: 2
             in_channels: 1
-            out_channels: 3
-            num_res_blocks: 2
-            num_channels: [32, 64, 64]
-            attention_levels: [false, false, true]
+            out_channels: 1
+            num_res_blocks: 0
+            num_channels: [32]
+            attention_levels: [false]
             resize_mode: bilinear
-            num_blocks: 1
-            upcast_attention: true
-            use_flash_attention: false
-            transformer_num_layers: 1
-            cross_attention_dim: 32
-            dropout: 0.0
-            norm_num_groups: 8
-            norm_eps: 0.001
 
     params:
-        recon_loss: l1
-        beta_start: 0.0001
-        beta_end: 0.01
-        num_train_timesteps: 500
+        recon_loss: l2
+        beta_start: 0.0015
+        beta_end: 0.0205
+        num_train_timesteps: 1000
         num_inference_timesteps: 50
-        latent_scaling_factor: 0.1
+        latent_scaling_factor: 1.0
         sampler: ddim
 
     training:
-        batch_size: 2
+        batch_size: 4
         n_epochs: 10
         ckpt_freq: 100
         ckpt_last_only: true
@@ -161,7 +153,7 @@ diffusion:
 
     validation:
         split: 0.2
-        batch_size: 2
+        batch_size: 4
         freq: 150
         sampling_freq: 5000
 
@@ -174,17 +166,15 @@ diffusion:
         in_size: [256, 256]
 
     optim:
-        weight_decay: 0.0
-        optimiser: "AdamW"
-        lr: 0.000001
+        weight_decay: 0.0001
+        optimiser: "Adam"
+        lr: 0.00002
         betas:
         - 0.9
-        - 0.99
-        amsgrad: true
-        eps: 0.00001
-        grad_clip: 0.5
+        - 0.999
+        amsgrad: false
+        eps: 0.00000001
+        grad_clip: 1.0
 
         lr_scheduler:
-            scheduler: cosine_annealing
-            T_max: 10000
-            eta_min: 0.0000001
+            scheduler: null
