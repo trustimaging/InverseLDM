@@ -122,7 +122,6 @@ diffusion:
         upcast_attention: false
         use_flash_attention: false
         transformer_num_layers: 1
-        cross_attention_dim: 64
         dropout: 0.0
         checkpoint: null
         condition:
