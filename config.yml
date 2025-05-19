@@ -48,7 +48,6 @@ autoencoder:
         latent_channels: 3
         div_loss: kl
         adversarial_loss: true
-        checkpoint: /raid/dverschu/InverseLDM/exps/test_conditioning/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
         condition:
             mode: concat
 
