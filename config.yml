@@ -48,8 +48,7 @@ autoencoder:
         latent_channels: 3
         div_loss: kl
         adversarial_loss: true
-        checkpoint: null
-        # checkpoint: /home/dp4018/scripts/InverseLDM/exps/unconditioned256/uncond256_0/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
+        checkpoint: /raid/dverschu/InverseLDM/exps/test_conditioning/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
         condition:
             mode: concat
 
@@ -74,7 +73,7 @@ autoencoder:
 
     training:
         batch_size: 32
-        n_epochs: 10
+        n_epochs: 0
         save_recon_freq: 500
         ckpt_freq: 500
         ckpt_last_only: true
@@ -115,44 +114,44 @@ diffusion:
         - true
         - true
         - true
-        num_transformer_layers: 3
+        num_transformer_layers: 1
         num_attn_heads: 8
-        loss: l2
+        loss: l1
         spatial_dims: 2
         upcast_attention: true
         use_flash_attention: false
         transformer_num_layers: 1
-        dropout: 0.1
+        dropout: 0.0
         checkpoint: null
         condition:
-            mode: crossattn
+            mode: concat
             spatial_dims: 2
             in_channels: 1
-            out_channels: 64
+            out_channels: 3
             num_res_blocks: 2
-            num_channels: [64, 128, 128]
+            num_channels: [32, 64, 64]
             attention_levels: [false, false, true]
             resize_mode: bilinear
             num_blocks: 1
             upcast_attention: true
             use_flash_attention: false
             transformer_num_layers: 1
-            cross_attention_dim: 64
-            dropout: 0.1
-            norm_num_groups: 32
-            norm_eps: 0.000001
+            cross_attention_dim: 32
+            dropout: 0.0
+            norm_num_groups: 8
+            norm_eps: 0.001
 
     params:
-        recon_loss: l2
-        beta_start: 0.0015
-        beta_end: 0.0195
-        num_train_timesteps: 1000
+        recon_loss: l1
+        beta_start: 0.0001
+        beta_end: 0.01
+        num_train_timesteps: 500
         num_inference_timesteps: 50
-        latent_scaling_factor: 0.18
+        latent_scaling_factor: 0.1
         sampler: ddim
 
     training:
-        batch_size: 4
+        batch_size: 2
         n_epochs: 10
         ckpt_freq: 100
         ckpt_last_only: true
@@ -162,7 +161,7 @@ diffusion:
 
     validation:
         split: 0.2
-        batch_size: 4
+        batch_size: 2
         freq: 150
         sampling_freq: 5000
 
@@ -175,15 +174,15 @@ diffusion:
         in_size: [256, 256]
 
     optim:
-        weight_decay: 0.0001
-        optimiser: "Adam"
-        lr: 0.000005
+        weight_decay: 0.0
+        optimiser: "AdamW"
+        lr: 0.000001
         betas:
         - 0.9
-        - 0.999
+        - 0.99
         amsgrad: true
-        eps: 0.00000001
-        grad_clip: 1.0
+        eps: 0.00001
+        grad_clip: 0.5
 
         lr_scheduler:
             scheduler: cosine_annealing
