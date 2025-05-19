@@ -44,9 +44,12 @@ def create_slice_condition(filepath, target_shape):
     # but with a single channel filled with the slice number
     condition = torch.zeros(target_shape)
     
-    # Normalize the slice number to [0, 1] assuming maximum slice number around 256
-    # This can be adjusted based on actual data ranges
-    normalized_value = (slice_num - 160) / (241 - 160)
+    # Normalize the slice number to [0, 1] for the range we expect to see
+    # Adjusted for slice values typically between 140 and 200
+    min_slice = 160
+    max_slice = 240
+    normalized_value = (slice_num - min_slice) / (max_slice - min_slice)
+    normalized_value = max(0.0, min(1.0, normalized_value))  # Clamp to [0, 1]
     
     # Fill the tensor with the normalized slice number
     condition.fill_(normalized_value)
