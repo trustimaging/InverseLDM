@@ -119,6 +119,11 @@ diffusion:
         num_attn_heads: 8
         loss: l2
         spatial_dims: 2
+        upcast_attention: false
+        use_flash_attention: false
+        transformer_num_layers: 1
+        cross_attention_dim: 64
+        dropout: 0.0
         checkpoint: null
         condition:
             mode: crossattn
@@ -130,6 +135,13 @@ diffusion:
             attention_levels: [false, false, true]
             resize_mode: bilinear
             num_blocks: 1
+            upcast_attention: false
+            use_flash_attention: false
+            transformer_num_layers: 1
+            cross_attention_dim: 64
+            dropout: 0.0
+            norm_num_groups: 32
+            norm_eps: 1e-6
 
     params:
         recon_loss: l2
@@ -160,7 +172,9 @@ diffusion:
         batch_size: 8
         output: last_only
         n_samples: 10
-        slice_values: [140, 160, 180, 200]  # Specific slice numbers to use during sampling
+        slice_values: [160, 180, 200, 220]  # Specific slice numbers to use during sampling
+        in_channels: 1
+        in_size: [256, 256]
 
     optim:
         weight_decay: 0.0001
