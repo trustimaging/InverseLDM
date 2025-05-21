@@ -57,8 +57,8 @@ def create_slice_condition(filepath, target_shape):
     
     # Normalize the slice number to [0, 1] for the range we expect to see
     # Adjusted for slice values typically between 140 and 200
-    min_slice = 160
-    max_slice = 240
+    min_slice = 138
+    max_slice = 199
     
     # Check for potential division by zero
     if max_slice == min_slice:
