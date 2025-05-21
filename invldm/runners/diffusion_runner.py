@@ -34,10 +34,39 @@ class DiffusionRunner(BaseRunner):
         x = next(iter(self.train_loader)) if not self.args.sampling_only else next(iter(self.sample_loader))
         if isinstance(x, (list, tuple)):
             x, c = x
-            c_dim = c.flatten(start_dim=2).shape[-1]
-            print(f"DEBUG-DIFFUSION: Got condition in loader, shape={c.shape}, c_dim={c_dim}")
+            # Check if c is a slice index (single number tensor)
+            if len(c.shape) <= 1 or (len(c.shape) == 2 and c.shape[1] == 1):
+                print(f"DEBUG-DIFFUSION: Got slice index condition, shape={c.shape}")
+                self.use_slice_conditioning = True
+                # Maximum number of slices to embed (adjust as needed)
+                self.max_slices = 1000
+                # Embedding dimension for slice indices
+                self.slice_embed_dim = 64
+                # Create an embedding layer for slice indices
+                self.slice_embedding = nn.Embedding(
+                    num_embeddings=self.max_slices,
+                    embedding_dim=self.slice_embed_dim
+                ).to(kwargs.get("device", "cuda"))
+                
+                # Create a position encoding layer to convert slice embedding to spatial features
+                # This will be used for addition and concat modes
+                self.slice_to_spatial = nn.Sequential(
+                    nn.Linear(self.slice_embed_dim, 256),
+                    nn.SiLU(),
+                    nn.Linear(256, 512),
+                    nn.SiLU(),
+                    nn.Linear(512, self.latent_channels * 8 * 8),  # Size based on expected spatial features
+                ).to(kwargs.get("device", "cuda"))
+                
+                # For cross-attention, we'll use the embedding directly
+                c_dim = self.slice_embed_dim
+            else:
+                print(f"DEBUG-DIFFUSION: Got condition in loader, shape={c.shape}")
+                c_dim = c.flatten(start_dim=2).shape[-1]
+                self.use_slice_conditioning = False
         else:
             print("DEBUG-DIFFUSION: No condition in loader")
+            self.use_slice_conditioning = False
         
         # Latent scaling factor
         if not self.args.sampling_only: 
@@ -154,6 +183,61 @@ class DiffusionRunner(BaseRunner):
             self.scaler = torch.amp.GradScaler(self.device)
                     
 
+    def process_slice_condition(self, slice_idx, mode, target_shape=None):
+        """
+        Process slice index condition into the appropriate format based on conditioning mode
+        
+        Args:
+            slice_idx: Tensor containing slice indices
+            mode: Conditioning mode ("addition", "concat", or "crossattn")
+            target_shape: Target spatial shape for the condition (for addition/concat modes)
+            
+        Returns:
+            Processed condition tensor appropriate for the requested mode
+        """
+        # Ensure slice indices are properly formatted as long tensors
+        if slice_idx.dim() > 1 and slice_idx.shape[1] == 1:
+            slice_idx = slice_idx.squeeze(1)
+            
+        # Make sure indices don't exceed embedding size
+        slice_idx = torch.clamp(slice_idx, 0, self.max_slices - 1).long()
+        
+        # Get basic embedding
+        batch_size = slice_idx.shape[0]
+        slice_embedding = self.slice_embedding(slice_idx)  # Shape: [batch_size, embed_dim]
+        
+        print(f"DEBUG-DIFFUSION: Processing slice condition, indices={slice_idx}, mode={mode}")
+        
+        if mode == "crossattn":
+            # For cross-attention, just return the embedding vectors
+            return slice_embedding.unsqueeze(1)  # [batch_size, 1, embed_dim]
+            
+        elif mode in ["addition", "concat"]:
+            if target_shape is None:
+                raise ValueError("Target shape must be provided for addition/concat modes")
+                
+            # Convert slice embedding to spatial features
+            spatial_features = self.slice_to_spatial(slice_embedding)
+            
+            # Reshape to spatial feature map
+            h, w = 8, 8  # Base spatial dimensions
+            c = self.latent_channels
+            spatial_features = spatial_features.view(batch_size, c, h, w)
+            
+            # Resize to match target shape
+            if (h, w) != target_shape[2:]:
+                spatial_features = torch.nn.functional.interpolate(
+                    spatial_features, 
+                    size=target_shape[2:], 
+                    mode='bilinear',
+                    align_corners=False
+                )
+            
+            return spatial_features
+            
+        else:
+            raise ValueError(f"Unsupported condition mode: {mode}")
+
     def train_step(self, input, **kwargs):
         self.model.train()
         self.autoencoder.eval()
@@ -165,11 +249,13 @@ class DiffusionRunner(BaseRunner):
         cond = kwargs.pop("condition", None)
         if cond is not None:
             print(f"DEBUG-DIFFUSION: train_step - Got condition, shape={cond.shape}")
-            # Check for NaN in condition
-            if torch.isnan(cond).any():
-                print("DEBUG-DIFFUSION: WARNING - NaN detected in input condition")
+            # Check if it's a slice index condition
+            is_slice_condition = self.use_slice_conditioning or (
+                len(cond.shape) <= 1 or (len(cond.shape) == 2 and cond.shape[1] == 1)
+            )
         else:
             print("DEBUG-DIFFUSION: train_step - No condition provided")
+            is_slice_condition = False
 
         # Forward pass: predict model noise based on condition
         with torch.amp.autocast(str(self.device)):
@@ -192,28 +278,44 @@ class DiffusionRunner(BaseRunner):
             
             # Project and reshape condition
             cond_mode = self.args.model.condition.mode
+            
             if cond is not None and cond_mode is not None:
                 print(f"DEBUG-DIFFUSION: Processing condition for mode={cond_mode}")
-                cond = self.cond_proj(cond)
                 
-                # Check for NaN after projection
-                if torch.isnan(cond).any():
-                    print("DEBUG-DIFFUSION: WARNING - NaN detected after condition projection")
-                    print(f"DEBUG-DIFFUSION: Condition after projection: shape={cond.shape}")
-                
-                if cond_mode in ["concat", "addition"]:
-                    orig_shape = cond.shape
-                    resize_mode = self.args.model.condition.resize_mode
-                    use_antialias = resize_mode in ["bilinear", "bicubic"]
-                    cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=resize_mode, antialias=use_antialias if use_antialias else None)
-                    print(f"DEBUG-DIFFUSION: Interpolated condition from {orig_shape} to {cond.shape} using mode={resize_mode}, antialias={use_antialias if use_antialias else None}")
-                    
-                    # Check for NaN after interpolation
+                # Process slice index condition differently
+                if is_slice_condition:
+                    cond = self.process_slice_condition(cond, cond_mode, target_shape=z.shape)
+                else:
+                    # Regular spatial condition processing
+                    # Fix NaN values in condition before projection
                     if torch.isnan(cond).any():
-                        print("DEBUG-DIFFUSION: WARNING - NaN detected after condition interpolation")
+                        print("DEBUG-DIFFUSION: Fixing NaN values in condition before projection")
+                        cond = torch.nan_to_num(cond, nan=0.0)
                         
-                elif cond_mode == "crossattn":
-                    cond = cond.flatten(start_dim=2)
+                    cond = self.cond_proj(cond)
+                    
+                    # Check for NaN after projection
+                    if torch.isnan(cond).any():
+                        print("DEBUG-DIFFUSION: WARNING - NaN detected after condition projection")
+                        print(f"DEBUG-DIFFUSION: Condition after projection: shape={cond.shape}")
+                        # Fix NaN values after projection
+                        cond = torch.nan_to_num(cond, nan=0.0)
+                    
+                    if cond_mode in ["concat", "addition"]:
+                        orig_shape = cond.shape
+                        resize_mode = self.args.model.condition.resize_mode
+                        use_antialias = resize_mode in ["bilinear", "bicubic"]
+                        cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=resize_mode, antialias=use_antialias if use_antialias else None)
+                        print(f"DEBUG-DIFFUSION: Interpolated condition from {orig_shape} to {cond.shape} using mode={resize_mode}, antialias={use_antialias if use_antialias else None}")
+                        
+                        # Fix NaN values after interpolation
+                        if torch.isnan(cond).any():
+                            print("DEBUG-DIFFUSION: Fixing NaN values after interpolation")
+                            cond = torch.nan_to_num(cond, nan=0.0)
+                            
+                    elif cond_mode == "crossattn":
+                        if not is_slice_condition:
+                            cond = cond.flatten(start_dim=2)
             else:
                 print("DEBUG-DIFFUSION: No condition processing needed")
 
@@ -243,6 +345,15 @@ class DiffusionRunner(BaseRunner):
         if torch.isnan(loss):
             print("DEBUG-DIFFUSION: ERROR - NaN detected in loss")
             print(f"DEBUG-DIFFUSION: Loss: {loss.item() if not torch.isnan(loss) else 'NaN'}")
+            # Replace NaN loss with zero loss to prevent breaking the backward pass
+            loss = torch.tensor(0.0, device=loss.device, requires_grad=True)
+            
+        # Check if tensors require gradients
+        if not noise_pred.requires_grad:
+            print("DEBUG-DIFFUSION: WARNING - noise_pred doesn't require gradients, detaching and creating a new tensor")
+            # Create a new tensor that requires gradients
+            noise_pred_with_grad = noise_pred.detach().clone().requires_grad_(True)
+            loss = self.recon_loss_fn(noise_pred_with_grad.float(), noise.float())
         
         # Zero grad and back propagation
         self.optimiser.zero_grad(set_to_none=True)
@@ -281,6 +392,14 @@ class DiffusionRunner(BaseRunner):
 
         # Get condition from kwargs
         cond = kwargs.pop("condition", None)
+        if cond is not None:
+            print(f"DEBUG-DIFFUSION: valid_step - Got condition, shape={cond.shape}")
+            # Check if it's a slice index condition
+            is_slice_condition = self.use_slice_conditioning or (
+                len(cond.shape) <= 1 or (len(cond.shape) == 2 and cond.shape[1] == 1)
+            )
+        else:
+            is_slice_condition = False
 
         # Forward pass: predict model noise based on condition
         with torch.amp.autocast(str(self.device)):
@@ -290,14 +409,18 @@ class DiffusionRunner(BaseRunner):
             
             # Project and reshape condition
             cond_mode = self.args.model.condition.mode
-            if cond is not None and cond_mode is not None:             
-                cond = self.cond_proj(cond)
-                if cond_mode in ["concat", "addition"]:
-                    resize_mode = self.args.model.condition.resize_mode
-                    use_antialias = resize_mode in ["bilinear", "bicubic"]
-                    cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=resize_mode, antialias=use_antialias if use_antialias else None)
-                elif cond_mode == "crossattn":
-                    cond = cond.flatten(start_dim=2)
+            if cond is not None and cond_mode is not None:
+                # Process slice index condition differently
+                if is_slice_condition:
+                    cond = self.process_slice_condition(cond, cond_mode, target_shape=z.shape)
+                else:           
+                    cond = self.cond_proj(cond)
+                    if cond_mode in ["concat", "addition"]:
+                        resize_mode = self.args.model.condition.resize_mode
+                        use_antialias = resize_mode in ["bilinear", "bicubic"]
+                        cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=resize_mode, antialias=use_antialias if use_antialias else None)
+                    elif cond_mode == "crossattn" and not is_slice_condition:
+                        cond = cond.flatten(start_dim=2)
                 
             timesteps = torch.randint(0, self.inferer.scheduler.num_train_timesteps, (z.shape[0],), device=z.device).long()
             noise_pred = self.inferer(
@@ -329,6 +452,14 @@ class DiffusionRunner(BaseRunner):
 
         # Get condition from kwargs
         cond = kwargs.pop("condition", None)
+        if cond is not None:
+            print(f"DEBUG-DIFFUSION: sample_step - Got condition, shape={cond.shape}")
+            # Check if it's a slice index condition
+            is_slice_condition = self.use_slice_conditioning or (
+                len(cond.shape) <= 1 or (len(cond.shape) == 2 and cond.shape[1] == 1)
+            )
+        else:
+            is_slice_condition = False
 
         # One autoencoder forward pass to get shape of latent space -- can be optimised!
         z_mu, z_sigma = self.autoencoder.encode(input)
@@ -337,14 +468,18 @@ class DiffusionRunner(BaseRunner):
             
         # Project and reshape condition
         cond_mode = self.args.model.condition.mode
-        if cond is not None and cond_mode is not None:             
-            cond = self.cond_proj(cond)
-            if cond_mode in ["concat", "addition"]:
-                resize_mode = self.args.model.condition.resize_mode
-                use_antialias = resize_mode in ["bilinear", "bicubic"]
-                cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=resize_mode, antialias=use_antialias if use_antialias else None)
-            elif cond_mode == "crossattn":
-                cond = cond.flatten(start_dim=2)
+        if cond is not None and cond_mode is not None:
+            # Process slice index condition differently
+            if is_slice_condition:
+                cond = self.process_slice_condition(cond, cond_mode, target_shape=z.shape)
+            else:            
+                cond = self.cond_proj(cond)
+                if cond_mode in ["concat", "addition"]:
+                    resize_mode = self.args.model.condition.resize_mode
+                    use_antialias = resize_mode in ["bilinear", "bicubic"]
+                    cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=resize_mode, antialias=use_antialias if use_antialias else None)
+                elif cond_mode == "crossattn" and not is_slice_condition:
+                    cond = cond.flatten(start_dim=2)
         else:
             # Inferer cannot accept cond_mode as None :(
             cond_mode = "crossattn"

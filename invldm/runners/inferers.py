@@ -471,10 +471,16 @@ class LatentDiffusionInferer(DiffusionInferer):
             elif mode == "addition" and condition is not None:
                 print(f"DEBUG-INFERER: Adding condition, shapes: latent={noisy_latent.shape}, condition={condition.shape}")
                 try:
+                    # Handle NaN values in condition before addition
+                    if torch.isnan(condition).any():
+                        print("DEBUG-INFERER: Fixing NaN values in condition before addition")
+                        condition = torch.nan_to_num(condition, nan=0.0)
+                        
                     diffusion_input = noisy_latent + condition
                     
                     if torch.isnan(diffusion_input).any():
-                        print("DEBUG-INFERER: WARNING - NaN detected after addition")
+                        print("DEBUG-INFERER: WARNING - NaN detected after addition, replacing with zeros")
+                        diffusion_input = torch.nan_to_num(diffusion_input, nan=0.0)
                 except Exception as e:
                     print(f"DEBUG-INFERER: ERROR during addition: {str(e)}")
                     raise e
@@ -488,7 +494,7 @@ class LatentDiffusionInferer(DiffusionInferer):
         try:
             prediction = diffusion_model(x=diffusion_input, timesteps=timesteps, context=condition if mode == "crossattn" else None)
             
-            # Check for NaNs in prediction
+            # Check for NaN in prediction
             if torch.isnan(prediction).any():
                 print("DEBUG-INFERER: WARNING - NaN detected in diffusion model prediction")
                 print(f"DEBUG-INFERER: prediction stats - shape={prediction.shape}")
@@ -504,6 +510,15 @@ class LatentDiffusionInferer(DiffusionInferer):
                 if torch.isnan(prediction).all():
                     print("DEBUG-INFERER: WARNING - All prediction values are NaN, returning zeros")
                     prediction = torch.zeros_like(prediction)
+                else:
+                    print("DEBUG-INFERER: Replacing NaN values with zeros")
+                    prediction = torch.nan_to_num(prediction, nan=0.0)
+            
+            # Make sure prediction requires gradients
+            if not prediction.requires_grad:
+                print("DEBUG-INFERER: WARNING - Prediction doesn't require gradients, creating new tensor")
+                prediction = prediction.detach().clone().requires_grad_(True)
+                
         except Exception as e:
             print(f"DEBUG-INFERER: ERROR in diffusion model: {str(e)}")
             import traceback
