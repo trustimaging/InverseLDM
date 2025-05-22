@@ -75,8 +75,12 @@ class DiffusionInferer(Inferer):
             noisy_image = torch.cat([noisy_image, condition], dim=1)
             condition = None
         elif mode == "addition":
-            noisy_image += condition
-            condition = None
+                # Scale the condition to prevent it from overwhelming the noisy image
+                # This helps ensure the condition guides but doesn't dominate
+                condition_strength = 0.3  # Adjust this scaling factor as needed
+                print(f"DEBUG-INFERER: Adding condition with strength {condition_strength}, shapes: noisy_image={noisy_image.shape}, condition={condition.shape}")
+                noisy_image = noisy_image + condition_strength * condition
+                condition = None
         elif mode == "crossattn":
             pass
         else:
@@ -139,7 +143,9 @@ class DiffusionInferer(Inferer):
                     model_input, timesteps=torch.Tensor((t,)).to(input_noise.device), context=None
                 )
             elif mode == "addition":
-                model_input = image + conditioning
+                # Scale the condition to prevent it from overwhelming the image
+                condition_strength = 0.3  # Use same scaling factor as in __call__ method
+                model_input = image + condition_strength * conditioning
                 model_output = diffusion_model(
                     model_input, timesteps=torch.Tensor((t,)).to(input_noise.device), context=None
                 )

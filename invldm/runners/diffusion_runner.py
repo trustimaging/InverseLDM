@@ -284,7 +284,35 @@ class DiffusionRunner(BaseRunner):
                 
                 # Process slice index condition differently
                 if is_slice_condition:
+                    print("DEBUG-DIFFUSION: Processing slice condition")
                     cond = self.process_slice_condition(cond, cond_mode, target_shape=z.shape)
+                    
+                    # Verify the condition doesn't have NaN values
+                    if torch.isnan(cond).any():
+                        print("DEBUG-DIFFUSION: Fixing NaN values in slice condition")
+                        cond = torch.nan_to_num(cond, nan=0.0)
+                        
+                    # Ensure the condition has reasonable values for addition mode
+                    if cond_mode == "addition":
+                        # Check condition statistics
+                        c_min = cond.min().item()
+                        c_max = cond.max().item()
+                        c_mean = cond.mean().item()
+                        c_std = torch.std(cond).item()
+                        print(f"DEBUG-DIFFUSION: Slice condition stats - min={c_min}, max={c_max}, mean={c_mean}, std={c_std}")
+                        
+                        # If condition has low variance, add spatial variation
+                        if c_std < 0.05:
+                            print("DEBUG-DIFFUSION: WARNING - Low variance in condition, enhancing spatial variation")
+                            # Add spatial variation by multiplying with spatial gradients
+                            h, w = cond.shape[2:]
+                            y_grad = torch.linspace(0.8, 1.2, h).view(-1, 1).expand(-1, w).to(cond.device)
+                            x_grad = torch.linspace(0.8, 1.2, w).view(1, -1).expand(h, -1).to(cond.device)
+                            variation = (x_grad + y_grad) / 2.0
+                            
+                            # Apply to each channel
+                            for c in range(cond.shape[1]):
+                                cond[:, c] = cond[:, c] * variation
                 else:
                     # Regular spatial condition processing
                     # Fix NaN values in condition before projection
@@ -312,9 +340,7 @@ class DiffusionRunner(BaseRunner):
                         if torch.isnan(cond).any():
                             print("DEBUG-DIFFUSION: Fixing NaN values after interpolation")
                             cond = torch.nan_to_num(cond, nan=0.0)
-                            
-                    elif cond_mode == "crossattn":
-                        if not is_slice_condition:
+                        elif cond_mode == "crossattn" and not is_slice_condition:
                             cond = cond.flatten(start_dim=2)
             else:
                 print("DEBUG-DIFFUSION: No condition processing needed")
@@ -471,13 +497,46 @@ class DiffusionRunner(BaseRunner):
         if cond is not None and cond_mode is not None:
             # Process slice index condition differently
             if is_slice_condition:
+                print("DEBUG-DIFFUSION: Processing slice condition for sampling")
                 cond = self.process_slice_condition(cond, cond_mode, target_shape=z.shape)
+                
+                # Verify the condition doesn't have NaN values
+                if torch.isnan(cond).any():
+                    print("DEBUG-DIFFUSION: Fixing NaN values in slice condition for sampling")
+                    cond = torch.nan_to_num(cond, nan=0.0)
+                    
+                # Ensure the condition has reasonable values for addition mode
+                if cond_mode == "addition":
+                    # Check condition statistics
+                    c_min = cond.min().item()
+                    c_max = cond.max().item()
+                    c_mean = cond.mean().item()
+                    c_std = torch.std(cond).item()
+                    print(f"DEBUG-DIFFUSION: Sampling slice condition stats - min={c_min}, max={c_max}, mean={c_mean}, std={c_std}")
+                    
+                    # If condition has low variance, add spatial variation
+                    if c_std < 0.05:
+                        print("DEBUG-DIFFUSION: WARNING - Low variance in sampling condition, enhancing spatial variation")
+                        # Add spatial variation by multiplying with spatial gradients
+                        h, w = cond.shape[2:]
+                        y_grad = torch.linspace(0.8, 1.2, h).view(-1, 1).expand(-1, w).to(cond.device)
+                        x_grad = torch.linspace(0.8, 1.2, w).view(1, -1).expand(h, -1).to(cond.device)
+                        variation = (x_grad + y_grad) / 2.0
+                        
+                        # Apply to each channel
+                        for c in range(cond.shape[1]):
+                            cond[:, c] = cond[:, c] * variation
             else:            
                 cond = self.cond_proj(cond)
                 if cond_mode in ["concat", "addition"]:
                     resize_mode = self.args.model.condition.resize_mode
                     use_antialias = resize_mode in ["bilinear", "bicubic"]
                     cond = torch.nn.functional.interpolate(cond, z.shape[2:], mode=resize_mode, antialias=use_antialias if use_antialias else None)
+                    
+                    # Fix NaN values after interpolation
+                    if torch.isnan(cond).any():
+                        print("DEBUG-DIFFUSION: Fixing NaN values after interpolation in sampling")
+                        cond = torch.nan_to_num(cond, nan=0.0)
                 elif cond_mode == "crossattn" and not is_slice_condition:
                     cond = cond.flatten(start_dim=2)
         else:

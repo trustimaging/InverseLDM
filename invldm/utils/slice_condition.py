@@ -46,14 +46,10 @@ def create_slice_condition(filepath, target_shape):
         target_shape: The shape of the output tensor (channel, height, width)
     
     Returns:
-        A tensor with a single channel filled with the normalized slice number
+        A tensor with spatial variation based on the slice number
     """
     print(f"DEBUG-SLICE: Creating condition tensor for {filepath} with shape {target_shape}")
     slice_num = extract_slice_number(filepath)
-    
-    # Create a tensor with the same spatial dimensions as the input
-    # but with a single channel filled with the slice number
-    condition = torch.zeros(target_shape)
     
     # Normalize the slice number to [0, 1] for the range we expect to see
     # Adjusted for slice values typically between 140 and 200
@@ -72,12 +68,51 @@ def create_slice_condition(filepath, target_shape):
     
     print(f"DEBUG-SLICE: Slice number {slice_num} normalized to {normalized_value} (range: {min_slice}-{max_slice})")
     
-    # Fill the tensor with the normalized slice number
-    condition.fill_(normalized_value)
+    # Create a spatially varying condition instead of uniform
+    # Extract shape dimensions
+    channels, height, width = target_shape
+    
+    # Create positional encodings for spatial variation
+    y_positions = torch.linspace(0, 1, height).view(-1, 1).expand(-1, width)
+    x_positions = torch.linspace(0, 1, width).view(1, -1).expand(height, -1)
+    
+    # Create spatial patterns based on the slice number
+    # This creates a condition that varies spatially based on position and slice number
+    condition = torch.zeros(target_shape)
+    
+    # Create different patterns for each channel
+    for c in range(channels):
+        # Create a radial pattern with frequency based on slice number
+        freq = 1.0 + normalized_value * 5.0  # Vary frequency based on slice
+        radial = ((x_positions - 0.5)**2 + (y_positions - 0.5)**2).sqrt() * freq
+        
+        # Create patterns with phase based on slice number
+        phase = normalized_value * 2 * np.pi
+        
+        if c == 0:
+            # Channel 0: Radial pattern
+            pattern = torch.cos(radial * np.pi + phase) * 0.5 + 0.5
+        elif c == 1:
+            # Channel 1: Horizontal gradient modulated by slice number
+            pattern = x_positions * normalized_value + (1 - normalized_value) * (1 - x_positions)
+        elif c == 2:
+            # Channel 2: Vertical gradient modulated by slice number
+            pattern = y_positions * normalized_value + (1 - normalized_value) * (1 - y_positions)
+        else:
+            # Additional channels: Mix of patterns
+            pattern = torch.sin(radial * np.pi + phase * c) * 0.5 + 0.5
+        
+        condition[c] = pattern
+    
+    # Apply a global intensity scaling based on the normalized slice value
+    # This ensures the overall signal strength still relates to the slice number
+    condition = condition * (0.2 + 0.8 * normalized_value)
     
     # Check for NaN values in the tensor
     if torch.isnan(condition).any():
         print(f"DEBUG-SLICE: ERROR - NaN detected in condition tensor")
+        # Replace NaN values with the normalized value
+        condition = torch.nan_to_num(condition, nan=normalized_value)
     
     # Stats for debugging
     print(f"DEBUG-SLICE: Condition tensor min: {condition.min().item()}, max: {condition.max().item()}")
