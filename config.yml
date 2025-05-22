@@ -73,7 +73,7 @@ autoencoder:
 
     training:
         batch_size: 32
-        n_epochs: 1
+        n_epochs: 10
         save_recon_freq: 500
         ckpt_freq: 500
         ckpt_last_only: true
