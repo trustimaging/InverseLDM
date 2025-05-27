@@ -159,9 +159,10 @@ class DiffusionRunner(BaseRunner):
         except AttributeError:
             self.num_inference_timesteps = self.args.params.num_train_timesteps
 
-        # Inferer
-        print(f"DEBUG-DIFFUSION: Creating LatentDiffusionInferer with scale_factor={self.scale_factor}")
-        self.inferer = LatentDiffusionInferer(self.scheduler, scale_factor=self.scale_factor)
+        # Create inferer with configurable condition strength
+        condition_strength = getattr(self.args.model.condition, 'strength', 0.5)
+        print(f"DEBUG-DIFFUSION: Creating LatentDiffusionInferer with scale_factor={self.scale_factor}, condition_strength={condition_strength}")
+        self.inferer = LatentDiffusionInferer(self.scheduler, scale_factor=self.scale_factor, condition_strength=condition_strength)
 
         # Optimisers and loss functions
         if not self.args.sampling_only:

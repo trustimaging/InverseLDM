@@ -133,6 +133,7 @@ diffusion:
             attention_levels: [false, false]
             resize_mode: bilinear
             dropout: 0.1
+            strength: 0.5
 
     params:
         recon_loss: l2

@@ -40,9 +40,10 @@ class DiffusionInferer(Inferer):
         scheduler: diffusion scheduler.
     """
 
-    def __init__(self, scheduler: nn.Module) -> None:
+    def __init__(self, scheduler: nn.Module, condition_strength: float = 0.5) -> None:
         Inferer.__init__(self)
         self.scheduler = scheduler
+        self.condition_strength = condition_strength
 
     def __call__(
         self,
@@ -75,12 +76,23 @@ class DiffusionInferer(Inferer):
             noisy_image = torch.cat([noisy_image, condition], dim=1)
             condition = None
         elif mode == "addition":
-                # Scale the condition to prevent it from overwhelming the noisy image
-                # This helps ensure the condition guides but doesn't dominate
-                condition_strength = 0.3  # Adjust this scaling factor as needed
-                print(f"DEBUG-INFERER: Adding condition with strength {condition_strength}, shapes: noisy_image={noisy_image.shape}, condition={condition.shape}")
-                noisy_image = noisy_image + condition_strength * condition
-                condition = None
+            # Normalize both noisy_image and condition to have similar scales
+            # This ensures the condition signal is not overwhelmed
+            noisy_std = torch.std(noisy_image)
+            cond_std = torch.std(condition)
+            
+            # Scale condition to match the scale of noisy_image
+            if cond_std > 0:
+                condition_scaled = condition * (noisy_std / cond_std)
+            else:
+                condition_scaled = condition
+                
+            # Apply condition with configurable strength
+            print(f"DEBUG-INFERER: Adding condition, shapes: latent={noisy_image.shape}, condition={condition.shape}")
+            print(f"DEBUG-INFERER: Scales - noisy_std={noisy_std.item():.4f}, cond_std={cond_std.item():.4f}, strength={self.condition_strength}")
+            
+            noisy_image = noisy_image + self.condition_strength * condition_scaled
+            condition = None
         elif mode == "crossattn":
             pass
         else:
@@ -143,9 +155,17 @@ class DiffusionInferer(Inferer):
                     model_input, timesteps=torch.Tensor((t,)).to(input_noise.device), context=None
                 )
             elif mode == "addition":
-                # Scale the condition to prevent it from overwhelming the image
-                condition_strength = 0.3  # Use same scaling factor as in __call__ method
-                model_input = image + condition_strength * conditioning
+                # Normalize both image and condition to have similar scales
+                img_std = torch.std(image)
+                cond_std = torch.std(conditioning)
+                
+                # Scale condition to match the scale of image
+                if cond_std > 0:
+                    condition_scaled = conditioning * (img_std / cond_std)
+                else:
+                    condition_scaled = conditioning
+                    
+                model_input = image + self.condition_strength * condition_scaled
                 model_output = diffusion_model(
                     model_input, timesteps=torch.Tensor((t,)).to(input_noise.device), context=None
                 )
@@ -371,10 +391,11 @@ class LatentDiffusionInferer(DiffusionInferer):
         scale_factor: float = 1.0,
         ldm_latent_shape: list | None = None,
         autoencoder_latent_shape: list | None = None,
+        condition_strength: float = 0.5,
     ) -> None:
-        super().__init__(scheduler=scheduler)
+        super().__init__(scheduler=scheduler, condition_strength=condition_strength)
         self.scale_factor = scale_factor
-        print(f"DEBUG-INFERER: Initialized LatentDiffusionInferer with scale_factor={scale_factor}")
+        print(f"DEBUG-INFERER: Initialized LatentDiffusionInferer with scale_factor={scale_factor}, condition_strength={condition_strength}")
         if (ldm_latent_shape is None) ^ (autoencoder_latent_shape is None):
             raise ValueError("If ldm_latent_shape is None, autoencoder_latent_shape must be None" "and vice versa.")
         self.ldm_latent_shape = ldm_latent_shape
