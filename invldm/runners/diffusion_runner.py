@@ -321,7 +321,13 @@ class DiffusionRunner(BaseRunner):
                         print("DEBUG-DIFFUSION: Fixing NaN values in condition before projection")
                         cond = torch.nan_to_num(cond, nan=0.0)
                         
+                    # Debug: check condition stats before projection
+                    print(f"DEBUG-DIFFUSION: Condition BEFORE projection - shape={cond.shape}, min={cond.min().item():.4f}, max={cond.max().item():.4f}, mean={cond.mean().item():.4f}, std={torch.std(cond).item():.4f}")
+                        
                     cond = self.cond_proj(cond)
+                    
+                    # Debug: check condition stats after projection
+                    print(f"DEBUG-DIFFUSION: Condition AFTER projection - shape={cond.shape}, min={cond.min().item():.4f}, max={cond.max().item():.4f}, mean={cond.mean().item():.4f}, std={torch.std(cond).item():.4f}")
                     
                     # Check for NaN after projection
                     if torch.isnan(cond).any():
@@ -585,6 +591,37 @@ class SpatialConditioner(DiffusionModelEncoder):
         
         # Get time embed dim
         self.time_embed_dim = self.block_out_channels[0] * 4
+        
+        # Initialize weights with small values to prevent overwhelming the main network
+        self._initialize_weights()
+    
+    def _initialize_weights(self):
+        # Initialize conv_out with very small weights
+        with torch.no_grad():
+            # Set conv_out weights to very small values
+            if hasattr(self.conv_out, 'conv'):
+                nn.init.normal_(self.conv_out.conv.weight, mean=0.0, std=0.001)
+                if self.conv_out.conv.bias is not None:
+                    nn.init.zeros_(self.conv_out.conv.bias)
+            
+            # Also initialize conv_in with smaller values
+            if hasattr(self.conv_in, 'conv'):
+                nn.init.normal_(self.conv_in.conv.weight, mean=0.0, std=0.02)
+                if self.conv_in.conv.bias is not None:
+                    nn.init.zeros_(self.conv_in.conv.bias)
+                    
+            # Initialize downsampling blocks with reasonable values
+            for block in self.down_blocks:
+                for module in block.modules():
+                    if isinstance(module, nn.Conv2d):
+                        nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+                        if module.bias is not None:
+                            nn.init.zeros_(module.bias)
+                    elif isinstance(module, nn.BatchNorm2d) or isinstance(module, nn.GroupNorm):
+                        if module.weight is not None:
+                            nn.init.ones_(module.weight)
+                        if module.bias is not None:
+                            nn.init.zeros_(module.bias)
     
     def forward(self, x: torch.Tensor):
         

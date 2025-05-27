@@ -502,8 +502,22 @@ class LatentDiffusionInferer(DiffusionInferer):
                     if torch.isnan(condition).any():
                         print("DEBUG-INFERER: Fixing NaN values in condition before addition")
                         condition = torch.nan_to_num(condition, nan=0.0)
+                    
+                    # Normalize both noisy_latent and condition to have similar scales
+                    # This ensures the condition signal is not overwhelmed
+                    noisy_std = torch.std(noisy_latent)
+                    cond_std = torch.std(condition)
+                    
+                    # Scale condition to match the scale of noisy_latent
+                    if cond_std > 0:
+                        condition_scaled = condition * (noisy_std / cond_std)
+                    else:
+                        condition_scaled = condition
                         
-                    diffusion_input = noisy_latent + condition
+                    # Apply condition with configurable strength
+                    print(f"DEBUG-INFERER: Scales - noisy_std={noisy_std.item():.4f}, cond_std={cond_std.item():.4f}, strength={self.condition_strength}")
+                        
+                    diffusion_input = noisy_latent + self.condition_strength * condition_scaled
                     
                     if torch.isnan(diffusion_input).any():
                         print("DEBUG-INFERER: WARNING - NaN detected after addition, replacing with zeros")
