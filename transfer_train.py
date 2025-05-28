@@ -21,6 +21,9 @@ class TransferTrainer(Trainer):
             if hasattr(self, 'diffusion_runner'):
                 del self.diffusion_runner
             
+            # Get train_conditioner_only flag from config
+            train_conditioner_only = getattr(args.diffusion, 'train_conditioner_only', False)
+            
             # Create transfer learning runner
             self.diffusion_runner = TransferDiffusionRunner(
                 args=args.diffusion,
@@ -31,6 +34,7 @@ class TransferTrainer(Trainer):
                 latent_channels=args.autoencoder.model.latent_channels,
                 train_loader=self.diffusion_train_dataloader,
                 valid_loader=self.diffusion_valid_dataloader,
+                train_conditioner_only=train_conditioner_only,  # Pass the flag
             )
             
             # Load pretrained weights
@@ -42,6 +46,11 @@ class TransferTrainer(Trainer):
                 # Try to auto-find pretrained checkpoint
                 logging.info("Attempting to load pretrained diffusion model...")
                 self.diffusion_runner.load_checkpoint(model_only=True)
+            
+            # Log training mode
+            if train_conditioner_only:
+                logging.info("CONDITIONER-ONLY TRAINING MODE: The pretrained diffusion model is frozen.")
+                logging.info("Only the conditioning network will be trained.")
 
 
 if __name__ == "__main__":

@@ -8,3 +8,5 @@ nohup.out
 data/
 *.npy
 *.png
+segmentation-guided-diffusion-main
+.DS_Store

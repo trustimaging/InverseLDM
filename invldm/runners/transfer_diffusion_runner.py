@@ -8,6 +8,81 @@ class TransferDiffusionRunner(DiffusionRunner):
     into a conditional model architecture.
     """
     
+    def __init__(self, **kwargs):
+        """
+        Initialize with option to freeze main model and only train conditioner.
+        """
+        # Check if we should only train the conditioner
+        self.train_conditioner_only = kwargs.get('train_conditioner_only', False)
+        
+        # Initialize parent class
+        super().__init__(**kwargs)
+        
+        # If training conditioner only, freeze the main model and update optimizer
+        if self.train_conditioner_only and hasattr(self, 'cond_proj'):
+            self._setup_conditioner_only_training()
+    
+    def _setup_conditioner_only_training(self):
+        """
+        Freeze the main diffusion model and setup optimizer to only train conditioner.
+        """
+        logging.info("Setting up conditioner-only training mode")
+        
+        # Freeze main diffusion model parameters
+        for param in self.model.parameters():
+            param.requires_grad = False
+        logging.info("Frozen main diffusion model parameters")
+        
+        # Unfreeze conditioner parameters
+        trainable_params = []
+        
+        # Conditioner network parameters
+        if hasattr(self, 'cond_proj'):
+            for param in self.cond_proj.parameters():
+                param.requires_grad = True
+                trainable_params.append(param)
+            logging.info(f"Enabled gradients for {sum(p.numel() for p in self.cond_proj.parameters())} conditioner parameters")
+        
+        # Slice embedding parameters if using slice conditioning
+        if hasattr(self, 'slice_embedding'):
+            for param in self.slice_embedding.parameters():
+                param.requires_grad = True
+                trainable_params.append(param)
+            logging.info(f"Enabled gradients for {sum(p.numel() for p in self.slice_embedding.parameters())} slice embedding parameters")
+        
+        # Slice to spatial conversion parameters
+        if hasattr(self, 'slice_to_spatial'):
+            for param in self.slice_to_spatial.parameters():
+                param.requires_grad = True
+                trainable_params.append(param)
+            logging.info(f"Enabled gradients for {sum(p.numel() for p in self.slice_to_spatial.parameters())} slice-to-spatial parameters")
+        
+        # Count total trainable parameters
+        total_trainable = sum(p.numel() for p in trainable_params)
+        total_params = sum(p.numel() for p in self.model.parameters()) + total_trainable
+        logging.info(f"Total trainable parameters: {total_trainable:,} / {total_params:,} ({100.0 * total_trainable / total_params:.2f}%)")
+        
+        # Recreate optimizer with only trainable parameters
+        if hasattr(self, 'optimiser') and trainable_params:
+            # Get optimizer settings from config
+            optim_kwargs = {
+                'lr': self.args.optim.lr,
+                'weight_decay': self.args.optim.weight_decay,
+                'betas': self.args.optim.betas,
+                'eps': self.args.optim.eps,
+                'amsgrad': self.args.optim.amsgrad
+            }
+            
+            # Create new optimizer with only trainable parameters
+            if self.args.optim.optimiser.lower() == "adam":
+                self.optimiser = torch.optim.Adam(trainable_params, **optim_kwargs)
+            elif self.args.optim.optimiser.lower() == "adamw":
+                self.optimiser = torch.optim.AdamW(trainable_params, **optim_kwargs)
+            else:
+                self.optimiser = torch.optim.Adam(trainable_params, **optim_kwargs)
+            
+            logging.info(f"Created new {self.args.optim.optimiser} optimizer for conditioner-only training")
+    
     def load_checkpoint(self, path=None, model_only=False):
         """
         Override to handle architecture mismatch when loading unconditional
@@ -101,5 +176,9 @@ class TransferDiffusionRunner(DiffusionRunner):
             
             # Optionally load optimizer state (usually better to start fresh for transfer learning)
             # self.optimiser.load_state_dict(checkpoint["optimiser_state_dict"])
+        
+        # Re-setup conditioner-only training if needed (in case optimizer was loaded)
+        if self.train_conditioner_only and hasattr(self, 'cond_proj'):
+            self._setup_conditioner_only_training()
         
         return True 
