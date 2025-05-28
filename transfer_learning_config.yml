@@ -20,7 +20,7 @@ data:
         normalise: false
 
 logging:
-    tool: wandb
+    tool: Wandb
     plot:
         vmin: 0.3
         vmax: 1.0

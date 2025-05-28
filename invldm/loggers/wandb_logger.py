@@ -8,7 +8,7 @@ import nvidia_smi
 import logging
 
 
-class WandbLogger(BaseLogger):
+class wandbLogger(BaseLogger):
     def __init__(self, args):
         super().__init__(args)
         
