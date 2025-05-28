@@ -34,7 +34,7 @@ class TransferTrainer(Trainer):
             )
             
             # Load pretrained weights
-            pretrained_path = args.diffusion.model.get('pretrained_checkpoint', None)
+            pretrained_path = getattr(args.diffusion.model, 'pretrained_checkpoint', None)
             if pretrained_path:
                 logging.info(f"Loading pretrained diffusion model from: {pretrained_path}")
                 self.diffusion_runner.load_checkpoint(pretrained_path, model_only=True)
@@ -48,11 +48,13 @@ if __name__ == "__main__":
     # Setup training configuration
     args = setup_train()
     
-    # Modify the pretrained checkpoint path in config if needed
-    # You can also pass this via command line or modify the config
-    if hasattr(args.diffusion.model, 'pretrained_checkpoint'):
-        # Update this path to your actual pretrained model location
-        args.diffusion.model.pretrained_checkpoint = "/path/to/your/exps/test_no_conditioning/logs/diffusion/checkpoints/diffusion_ckpt_latest.pth"
+    # Set the pretrained checkpoint path
+    # This path should point to your unconditional diffusion model checkpoint
+    pretrained_diffusion_path = "/raid/dverschu/InverseLDM/exps/test_no_conditioning/logs/diffusion/checkpoints/diffusion_ckpt_latest.pth"
+    
+    # Add the pretrained_checkpoint attribute to the config
+    if hasattr(args.diffusion, 'model'):
+        args.diffusion.model.pretrained_checkpoint = pretrained_diffusion_path
     
     # Create trainer with transfer learning support
     trainer = TransferTrainer(args)

@@ -24,7 +24,7 @@ class TransferDiffusionRunner(DiffusionRunner):
                 path = os.path.join(self.args.ckpt_path, latest_ckpt_name)
             except (IndexError, FileNotFoundError):
                 # Try the pretrained path
-                pretrained_path = "/path/to/your/exps/test_no_conditioning/logs/diffusion/checkpoints"
+                pretrained_path = "/raid/dverschu/InverseLDM/exps/test_no_conditioning/logs/diffusion/checkpoints"
                 try:
                     latest_ckpt_name = [f for f in os.listdir(pretrained_path) 
                                        if fnmatch.fnmatch(f, "*latest*")][0]
