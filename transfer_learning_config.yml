@@ -135,7 +135,7 @@ diffusion:
             attention_levels: [false, false]
             resize_mode: bilinear
             dropout: 0.1
-            strength: 0.5  # Start with lower strength for fine-tuning
+            strength: 0  # Start with lower strength for fine-tuning
 
     params:
         recon_loss: l2

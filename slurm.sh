@@ -46,7 +46,7 @@ sed -i "s|/raid/dverschu/InverseLDM/exps/test_no_conditioning/logs/diffusion/che
 echo "Starting transfer learning..."
 python /raid/dverschu/InverseLDM/transfer_train.py \
     --config /raid/dverschu/InverseLDM/transfer_learning_config.yml \
-    --name transfer_conditioning \
+    --name transfer_conditioning_strength0 \
     --logdir exps \
     --gpu_ids [0,1,2,3,4,5,6,7] \
     --overwrite -y
