@@ -172,15 +172,32 @@ class DiffusionRunner(BaseRunner):
             optim_kwargs.pop("params", None)
             print(f"DEBUG-DIFFUSION: Creating optimizer {self.args.optim.optimiser} with params: {optim_kwargs}")
             
+            # Collect all parameters to optimize
+            params_to_optimize = list(self.model.parameters())
+            
+            # Add conditioning network parameters if they exist
+            if hasattr(self, 'cond_proj'):
+                params_to_optimize.extend(self.cond_proj.parameters())
+                print(f"DEBUG-DIFFUSION: Added cond_proj parameters to optimizer")
+                
+            # Add slice conditioning parameters if they exist
+            if hasattr(self, 'slice_embedding'):
+                params_to_optimize.extend(self.slice_embedding.parameters())
+                params_to_optimize.extend(self.slice_to_spatial.parameters())
+                print(f"DEBUG-DIFFUSION: Added slice conditioning parameters to optimizer")
+            
             # Create the correct optimizer based on the name
             if self.args.optim.optimiser.lower() == "adam":
-                self.optimiser = torch.optim.Adam(self.model.parameters(), **optim_kwargs)
+                self.optimiser = torch.optim.Adam(params_to_optimize, **optim_kwargs)
             elif self.args.optim.optimiser.lower() == "adamw":
-                self.optimiser = torch.optim.AdamW(self.model.parameters(), **optim_kwargs)
+                self.optimiser = torch.optim.AdamW(params_to_optimize, **optim_kwargs)
             else:
-                self.optimiser = torch.optim.Adam(self.model.parameters(), **optim_kwargs)
+                self.optimiser = torch.optim.Adam(params_to_optimize, **optim_kwargs)
                 print(f"DEBUG-DIFFUSION: WARNING - Unknown optimizer {self.args.optim.optimiser}, falling back to Adam")
                 
+            # Store params for gradient clipping
+            self.params_to_optimize = params_to_optimize
+            
             self.scaler = torch.amp.GradScaler(self.device)
                     
 
@@ -399,10 +416,27 @@ class DiffusionRunner(BaseRunner):
                 if param.grad is not None and torch.isnan(param.grad).any():
                     print(f"DEBUG-DIFFUSION: WARNING - NaN detected in gradient for {name}")
                 
+            # Check gradients for conditioning networks
+            if hasattr(self, 'cond_proj'):
+                cond_has_grad = False
+                for name, param in self.cond_proj.named_parameters():
+                    if param.grad is not None:
+                        cond_has_grad = True
+                        if torch.isnan(param.grad).any():
+                            print(f"DEBUG-DIFFUSION: WARNING - NaN detected in cond_proj gradient for {name}")
+                if not cond_has_grad:
+                    print("DEBUG-DIFFUSION: WARNING - No gradients in cond_proj!")
+                    
+            if hasattr(self, 'slice_embedding'):
+                if self.slice_embedding.weight.grad is not None:
+                    print(f"DEBUG-DIFFUSION: slice_embedding grad norm: {self.slice_embedding.weight.grad.norm().item():.6f}")
+                else:
+                    print("DEBUG-DIFFUSION: WARNING - No gradient in slice_embedding!")
+                
             # Apply gradient clipping if configured
             if self.args.optim.grad_clip:
                 print(f"DEBUG-DIFFUSION: Applying gradient clipping with max_norm={self.args.optim.grad_clip}")
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.optim.grad_clip)
+                torch.nn.utils.clip_grad_norm_(self.params_to_optimize, self.args.optim.grad_clip)
             
             self.scaler.step(self.optimiser)
             self.scaler.update()
