@@ -130,7 +130,7 @@ diffusion:
             out_channels: 3
             num_res_blocks: 1
             num_channels: [32, 64]
-            attention_levels: [true, true]
+            attention_levels: [false, false]
             resize_mode: bilinear
             dropout: 0.1
             strength: 0.99
