@@ -62,6 +62,9 @@ class TransferDiffusionRunner(DiffusionRunner):
         total_params = sum(p.numel() for p in self.model.parameters()) + total_trainable
         logging.info(f"Total trainable parameters: {total_trainable:,} / {total_params:,} ({100.0 * total_trainable / total_params:.2f}%)")
         
+        # Update params_to_optimize for gradient clipping
+        self.params_to_optimize = trainable_params
+        
         # Recreate optimizer with only trainable parameters
         if hasattr(self, 'optimiser') and trainable_params:
             # Get optimizer settings from config

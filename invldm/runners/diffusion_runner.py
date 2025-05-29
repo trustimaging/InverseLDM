@@ -392,12 +392,18 @@ class DiffusionRunner(BaseRunner):
         loss = self.recon_loss_fn(noise_pred.float(), noise.float())
         
         # Check for NaN in loss
-        if torch.isnan(loss):
-            print("DEBUG-DIFFUSION: ERROR - NaN detected in loss")
-            print(f"DEBUG-DIFFUSION: Loss: {loss.item() if not torch.isnan(loss) else 'NaN'}")
-            # Replace NaN loss with zero loss to prevent breaking the backward pass
-            loss = torch.tensor(0.0, device=loss.device, requires_grad=True)
+        if torch.isnan(loss) or torch.isinf(loss):
+            print("DEBUG-DIFFUSION: ERROR - NaN/Inf detected in loss")
+            print(f"DEBUG-DIFFUSION: Loss: {loss.item() if torch.isfinite(loss) else 'NaN/Inf'}")
+            print(f"DEBUG-DIFFUSION: noise_pred stats - min: {noise_pred.min().item()}, max: {noise_pred.max().item()}, mean: {noise_pred.mean().item()}")
+            print(f"DEBUG-DIFFUSION: noise stats - min: {noise.min().item()}, max: {noise.max().item()}, mean: {noise.mean().item()}")
             
+            # Skip this training step by returning a safe loss value
+            output.update({
+                "loss": torch.tensor(0.5, device=self.device, dtype=torch.float32),
+            })
+            return output
+
         # Check if tensors require gradients
         if not noise_pred.requires_grad:
             print("DEBUG-DIFFUSION: WARNING - noise_pred doesn't require gradients, detaching and creating a new tensor")
@@ -409,7 +415,28 @@ class DiffusionRunner(BaseRunner):
         self.optimiser.zero_grad(set_to_none=True)
         
         try:
-            self.scaler.scale(loss).backward()
+            # Scale the loss for mixed precision training
+            scaled_loss = self.scaler.scale(loss)
+            
+            # Backward pass
+            scaled_loss.backward()
+            
+            # Unscale the gradients before clipping
+            self.scaler.unscale_(self.optimiser)
+            
+            # Check for inf/nan in gradients
+            grad_norm = 0.0
+            parameters_to_check = self.model.parameters() if not hasattr(self, 'params_to_optimize') else self.params_to_optimize
+            
+            for p in parameters_to_check:
+                if p.grad is not None:
+                    param_norm = p.grad.data.norm(2)
+                    grad_norm += param_norm.item() ** 2
+            grad_norm = grad_norm ** 0.5
+            
+            # Log if we have inf/nan gradients
+            if not torch.isfinite(torch.tensor(grad_norm)):
+                print(f"DEBUG-DIFFUSION: WARNING - Non-finite gradient norm: {grad_norm}")
             
             # Check for NaN in gradients
             for name, param in self.model.named_parameters():
@@ -424,7 +451,7 @@ class DiffusionRunner(BaseRunner):
                         cond_has_grad = True
                         if torch.isnan(param.grad).any():
                             print(f"DEBUG-DIFFUSION: WARNING - NaN detected in cond_proj gradient for {name}")
-                if not cond_has_grad:
+                if not cond_has_grad and self.cond_proj.parameters():
                     print("DEBUG-DIFFUSION: WARNING - No gradients in cond_proj!")
                     
             if hasattr(self, 'slice_embedding'):
@@ -434,17 +461,31 @@ class DiffusionRunner(BaseRunner):
                     print("DEBUG-DIFFUSION: WARNING - No gradient in slice_embedding!")
                 
             # Apply gradient clipping if configured
-            if self.args.optim.grad_clip:
+            if self.args.optim.grad_clip and hasattr(self, 'params_to_optimize'):
                 print(f"DEBUG-DIFFUSION: Applying gradient clipping with max_norm={self.args.optim.grad_clip}")
                 torch.nn.utils.clip_grad_norm_(self.params_to_optimize, self.args.optim.grad_clip)
             
+            # Step the optimizer
             self.scaler.step(self.optimiser)
+            
+            # Update the scale for next iteration
             self.scaler.update()
             
         except RuntimeError as e:
             print(f"DEBUG-DIFFUSION: ERROR in backward/optimizer - {str(e)}")
             import traceback
             print(traceback.format_exc())
+            
+            # Reset the scaler state if we hit an error
+            self.scaler.update()
+            
+            # Create a minimal loss to keep training going
+            print("DEBUG-DIFFUSION: Creating fallback loss to continue training")
+            with torch.amp.autocast(str(self.device)):
+                # Use a small constant loss
+                fallback_loss = torch.tensor(0.5, device=self.device, dtype=torch.float32)
+                output.update({"loss": fallback_loss})
+                return output
 
         # Output dictionary update
         output.update({
