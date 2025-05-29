@@ -142,7 +142,7 @@ diffusion:
             num_channels:
             - 32
             - 64
-            -128
+            - 128
             attention_levels:
             - false
             - false
