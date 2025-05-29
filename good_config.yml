@@ -147,7 +147,7 @@ diffusion:
             - false
             resize_mode: bilinear
             dropout: 0.1
-            strength: 0.9
+            strength: 0.2
     params:
         recon_loss: l2
         beta_start: 0.0015
