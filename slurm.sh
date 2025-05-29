@@ -37,7 +37,7 @@ PRETRAINED_DIFFUSION="/raid/dverschu/InverseLDM/exps/test_no_conditioning/logs/d
 
 
 export WANDB_API_KEY='e709e9c43e2fcded8dc2dfd834d685f1bcb46d85'
-export WANDB_NAME="high_lr"
+export WANDB_NAME="low_lr"
 export WANDB_PROJECT="conditioning"
 
 # Update the config file with correct paths
@@ -50,7 +50,7 @@ sed -i "s|/raid/dverschu/InverseLDM/exps/test_no_conditioning/logs/diffusion/che
 # Run the transfer learning
 echo "Starting transfer learning..."
 python /raid/dverschu/InverseLDM/transfer_train.py \
-    --config /raid/dverschu/InverseLDM/transfer_learning_config.yml \
+    --config /raid/dverschu/InverseLDM/exps/transfer_conditioning_strength0/logs/config_training.yml \
     --name $WANDB_NAME \
     --logdir exps \
     --gpu_ids [0,1,2,3,4,5,6,7] \
