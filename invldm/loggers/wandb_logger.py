@@ -8,14 +8,14 @@ import nvidia_smi
 import logging
 
 
-class wandbLogger(BaseLogger):
+class WandbLogger(BaseLogger):
     def __init__(self, args):
         super().__init__(args)
         
         # Get WandB configuration from environment variables
         api_key = os.environ.get('WANDB_API_KEY')
         project = os.environ.get('WANDB_PROJECT', 'conditioning')
-        name = os.environ.get('WANDB_NAME')
+        name = os.environ.get('WANDB_NAME', f"{args.name}_{args.run.run_name}")
         
         # Initialize WandB
         wandb.login(key=api_key)
@@ -39,6 +39,19 @@ class wandbLogger(BaseLogger):
         except Exception as e:
             logging.warning(f"GPU monitoring not available: {e}")
             self.gpu_available = False
+        
+        # Track last GPU log step to reduce frequency
+        self.last_gpu_log_step = 0
+        # Allow configuring GPU log frequency via environment variable
+        self.gpu_log_frequency = int(os.environ.get('WANDB_GPU_LOG_FREQ', '100'))
+        
+        # Track if hparams have been logged
+        self.hparams_logged = False
+        
+        # Disable GPU logging if requested
+        if os.environ.get('WANDB_DISABLE_GPU_LOGGING', '').lower() == 'true':
+            self.gpu_available = False
+            logging.info("GPU logging disabled via WANDB_DISABLE_GPU_LOGGING")
             
         return None
     
@@ -65,11 +78,17 @@ class wandbLogger(BaseLogger):
     
     def log_scalar(self, tag, val, step, **kwargs):
         """Log scalar values to WandB"""
-        wandb.log({tag: val}, step=step)
+        # Use commit=False to batch logs together for better performance
+        wandb.log({tag: val}, step=step, commit=False)
         
-        # Log GPU metrics if this is a loss metric
+        # Log GPU metrics less frequently (every N steps)
         if "loss" in tag.lower() and self.gpu_available:
-            self._log_gpu_metrics(step)
+            if step - self.last_gpu_log_step >= self.gpu_log_frequency:
+                self._log_gpu_metrics(step)
+                self.last_gpu_log_step = step
+        
+        # Commit the logs
+        wandb.log({}, commit=True)
         
         return None
     
@@ -82,12 +101,13 @@ class wandbLogger(BaseLogger):
     
     def log_hparams(self, hparam_dict, metric_dict, **kwargs):
         """Log hyperparameters - WandB handles this through config"""
-        # Update config if needed
-        wandb.config.update(hparam_dict)
+        # Only log hparams once at the beginning
+        if not self.hparams_logged:
+            wandb.config.update(hparam_dict)
+            self.hparams_logged = True
         
-        # Log metrics
-        for key, val in metric_dict.items():
-            wandb.log({key: val})
+        # Skip logging metrics from hparams to avoid duplication
+        # These metrics are already logged via log_scalar
         return None
     
     def _log_gpu_metrics(self, step):
