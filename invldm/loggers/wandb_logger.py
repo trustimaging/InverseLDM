@@ -18,7 +18,7 @@ class WandbLogger(BaseLogger):
         # Get WandB configuration from environment variables
         api_key = os.environ.get('WANDB_API_KEY')
         project = os.environ.get('WANDB_PROJECT', 'conditioning')
-        name = os.environ.get('WANDB_NAME', f"{args.name}_{args.run.run_name}")
+        name = os.environ.get('WANDB_NAME')
         
         if not api_key:
             logging.error("WANDB_API_KEY not set! Please set it in your environment.")
