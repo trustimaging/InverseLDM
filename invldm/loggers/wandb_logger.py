@@ -4,18 +4,25 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from . import BaseLogger
-import nvidia_smi
 import logging
+from PIL import Image
+import glob
 
 
 class WandbLogger(BaseLogger):
     def __init__(self, args):
         super().__init__(args)
         
+        logging.info("Initializing WandB logger...")
+        
         # Get WandB configuration from environment variables
         api_key = os.environ.get('WANDB_API_KEY')
         project = os.environ.get('WANDB_PROJECT', 'conditioning')
         name = os.environ.get('WANDB_NAME', f"{args.name}_{args.run.run_name}")
+        
+        if not api_key:
+            logging.error("WANDB_API_KEY not set! Please set it in your environment.")
+            raise ValueError("WANDB_API_KEY environment variable is required")
         
         # Initialize WandB
         wandb.login(key=api_key)
@@ -31,27 +38,22 @@ class WandbLogger(BaseLogger):
             dir=args.run.exp_folder
         )
         
-        # Initialize nvidia-ml-py for GPU monitoring
-        try:
-            nvidia_smi.nvmlInit()
-            self.gpu_available = True
-            self.device_count = nvidia_smi.nvmlDeviceGetCount()
-        except Exception as e:
-            logging.warning(f"GPU monitoring not available: {e}")
-            self.gpu_available = False
+        # Store paths for sample monitoring
+        self.exp_folder = args.run.exp_folder
+        self.samples_path = os.path.join(self.exp_folder, 'logs', 'diffusion', 'samples')
         
-        # Track last GPU log step to reduce frequency
-        self.last_gpu_log_step = 0
-        # Allow configuring GPU log frequency via environment variable
-        self.gpu_log_frequency = int(os.environ.get('WANDB_GPU_LOG_FREQ', '100'))
+        # Create samples directory if it doesn't exist
+        os.makedirs(self.samples_path, exist_ok=True)
         
-        # Track if hparams have been logged
-        self.hparams_logged = False
+        # Track last step we checked for images
+        self.last_image_check_step = 0
+        self.image_check_frequency = 50  # Check every 50 steps
         
-        # Disable GPU logging if requested
-        if os.environ.get('WANDB_DISABLE_GPU_LOGGING', '').lower() == 'true':
-            self.gpu_available = False
-            logging.info("GPU logging disabled via WANDB_DISABLE_GPU_LOGGING")
+        logging.info(f"WandB logger initialized successfully!")
+        logging.info(f"  Project: {project}")
+        logging.info(f"  Run name: {name}")
+        logging.info(f"  Monitoring samples from: {self.samples_path}")
+        logging.info(f"  WandB run URL: {self.run.url}")
             
         return None
     
@@ -78,17 +80,17 @@ class WandbLogger(BaseLogger):
     
     def log_scalar(self, tag, val, step, **kwargs):
         """Log scalar values to WandB"""
-        # Use commit=False to batch logs together for better performance
-        wandb.log({tag: val}, step=step, commit=False)
+        # Only log training and validation losses
+        if "loss" in tag.lower():
+            wandb.log({tag: val}, step=step)
+            # Log to console periodically
+            if step % 100 == 0:
+                logging.info(f"WandB: Logged {tag}={val:.6f} at step {step}")
         
-        # Log GPU metrics less frequently (every N steps)
-        if "loss" in tag.lower() and self.gpu_available:
-            if step - self.last_gpu_log_step >= self.gpu_log_frequency:
-                self._log_gpu_metrics(step)
-                self.last_gpu_log_step = step
-        
-        # Commit the logs
-        wandb.log({}, commit=True)
+        # Periodically check for new sample images
+        if step - self.last_image_check_step >= self.image_check_frequency:
+            self._log_sample_images(step)
+            self.last_image_check_step = step
         
         return None
     
@@ -97,69 +99,89 @@ class WandbLogger(BaseLogger):
         # Convert matplotlib figure to image
         wandb.log({tag: wandb.Image(fig)}, step=step)
         plt.close(fig)
+        
+        # Also check for new images in the samples directory
+        self._log_sample_images(step)
+        
         return None
     
     def log_hparams(self, hparam_dict, metric_dict, **kwargs):
-        """Log hyperparameters - WandB handles this through config"""
-        # Only log hparams once at the beginning
-        if not self.hparams_logged:
-            wandb.config.update(hparam_dict)
-            self.hparams_logged = True
-        
-        # Skip logging metrics from hparams to avoid duplication
-        # These metrics are already logged via log_scalar
+        """Skip hyperparameter logging to avoid overhead"""
         return None
     
-    def _log_gpu_metrics(self, step):
-        """Log GPU utilization and memory metrics"""
-        if not self.gpu_available:
+    def _log_sample_images(self, step):
+        """Log all images from the samples directory"""
+        if not os.path.exists(self.samples_path):
             return
         
-        gpu_metrics = {}
+        # Find all image files in the samples directory
+        image_patterns = ['*.png', '*.jpg', '*.jpeg']
+        image_files = []
         
-        try:
-            for i in range(self.device_count):
-                handle = nvidia_smi.nvmlDeviceGetHandleByIndex(i)
+        for pattern in image_patterns:
+            pattern_files = glob.glob(os.path.join(self.samples_path, pattern))
+            image_files.extend(pattern_files)
+        
+        # Also check subdirectories
+        for subdir in ['training', 'validation', 'sampling']:
+            subdir_path = os.path.join(self.samples_path, subdir)
+            if os.path.exists(subdir_path):
+                for pattern in image_patterns:
+                    pattern_files = glob.glob(os.path.join(subdir_path, pattern))
+                    image_files.extend(pattern_files)
+        
+        if not image_files:
+            return
+        
+        # Sort by modification time to get the latest images
+        image_files.sort(key=os.path.getmtime, reverse=True)
+        
+        # Log the most recent images (limit to avoid overwhelming the UI)
+        max_images = 50  # Increased limit
+        images_to_log = {}
+        
+        # Initialize logged images set if not exists
+        if not hasattr(self, '_logged_images'):
+            self._logged_images = set()
+        
+        new_images_count = 0
+        for img_path in image_files[:max_images]:
+            # Skip if we've already logged this exact file
+            if img_path in self._logged_images:
+                continue
                 
-                # Memory info
-                mem_info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
-                gpu_metrics[f'gpu_{i}/memory_used_mb'] = mem_info.used / 1024 / 1024
-                gpu_metrics[f'gpu_{i}/memory_total_mb'] = mem_info.total / 1024 / 1024
-                gpu_metrics[f'gpu_{i}/memory_percent'] = (mem_info.used / mem_info.total) * 100
-                
-                # Utilization
-                util = nvidia_smi.nvmlDeviceGetUtilizationRates(handle)
-                gpu_metrics[f'gpu_{i}/utilization_percent'] = util.gpu
-                
-                # Power
-                try:
-                    power = nvidia_smi.nvmlDeviceGetPowerUsage(handle) / 1000  # Convert to watts
-                    power_limit = nvidia_smi.nvmlDeviceGetPowerManagementLimit(handle) / 1000
-                    gpu_metrics[f'gpu_{i}/power_watts'] = power
-                    gpu_metrics[f'gpu_{i}/power_limit_watts'] = power_limit
-                    gpu_metrics[f'gpu_{i}/power_percent'] = (power / power_limit) * 100
-                except nvidia_smi.NVMLError:
-                    pass
-                
-                # Temperature
-                try:
-                    temp = nvidia_smi.nvmlDeviceGetTemperature(handle, nvidia_smi.NVML_TEMPERATURE_GPU)
-                    gpu_metrics[f'gpu_{i}/temperature_c'] = temp
-                except nvidia_smi.NVMLError:
-                    pass
+            img_name = os.path.basename(img_path)
+            relative_path = os.path.relpath(img_path, self.samples_path)
             
-            wandb.log(gpu_metrics, step=step)
-            
-        except Exception as e:
-            logging.warning(f"Error logging GPU metrics: {e}")
+            try:
+                # Load and log the image
+                img = Image.open(img_path)
+                
+                # Create a more descriptive caption
+                # Extract info from filename if possible
+                caption_parts = [relative_path]
+                if "epoch" in img_name:
+                    caption_parts.append(f"(Step {step})")
+                caption = " ".join(caption_parts)
+                
+                # Use relative path as key to organize better
+                log_key = f"samples/{relative_path.replace(os.sep, '/')}"
+                images_to_log[log_key] = wandb.Image(img, caption=caption)
+                
+                # Track that we've logged this image
+                self._logged_images.add(img_path)
+                new_images_count += 1
+                
+            except Exception as e:
+                logging.warning(f"Failed to log image {img_path}: {e}")
+        
+        # Log all new images at once
+        if images_to_log:
+            wandb.log(images_to_log, step=step)
+            logging.info(f"WandB: Logged {new_images_count} new sample images at step {step}")
     
     def __del__(self):
         """Cleanup when logger is destroyed"""
-        if hasattr(self, 'gpu_available') and self.gpu_available:
-            try:
-                nvidia_smi.nvmlShutdown()
-            except:
-                pass
-        
         if hasattr(self, 'run'):
+            logging.info("Finishing WandB run...")
             self.run.finish() 

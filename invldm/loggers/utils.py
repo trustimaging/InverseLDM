@@ -8,7 +8,12 @@ def _instance_logger(args):
         # mod = __import__(f'.{args.logging.tool.lower()}_logger.py', fromlist=[args.logging.tool], globals=globals())
         # mod_name = f'.{args.logging.tool.lower()}_logger'
         mod = importlib.import_module(f'.{args.logging.tool.lower()}_logger', "invldm.loggers")
-        cls_name = args.logging.tool + "Logger"
+        
+        # Special case for wandb to get correct capitalization
+        if args.logging.tool.lower() == "wandb":
+            cls_name = "WandbLogger"
+        else:
+            cls_name = args.logging.tool + "Logger"
 
         
         try:
