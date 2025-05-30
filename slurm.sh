@@ -27,8 +27,8 @@
 
 
 # activate conda environment
-source /scratch_brain/dverschu/miniconda3/etc/profile.d/conda.sh
-conda activate diff2
+source /scratch_brain/acd23/miniconda3/etc/profile.d/conda.sh
+conda activate stride
 
 # python /raid/dverschu/InverseLDM/train.py --config /raid/dverschu/InverseLDM/config.yml --name strong_conditioning_new --overwrite -y --gpu_ids [0,1,2,3,4,5,6,7] 
 
@@ -49,8 +49,8 @@ sed -i "s|/scratch_brain/dverschu/InverseLDM/exps/test_no_conditioning/logs/diff
 
 # Run the transfer learning
 echo "Starting transfer learning..."
-python /scratch_brain/dverschu/InverseLDM/transfer_train.py \
-    --config /scratch_brain/dverschu/InverseLDM/good_config.yml \
+python /scratch_brain/acd23/code/InverseLDM/transfer_train.py \
+    --config /scratch_brain/acd23/code/InverseLDM/good_config.yml \
     --name $WANDB_NAME \
     --logdir exps \
     --gpu_ids [0,1,2,3,4,5,6,7] \
