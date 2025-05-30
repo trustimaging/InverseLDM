@@ -140,6 +140,7 @@ diffusion:
             out_channels: 3
             num_blocks: 3
             num_res_blocks: 0
+            transformer_num_layers: 3
             num_channels:
             - 32
             - 64
