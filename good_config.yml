@@ -135,7 +135,7 @@ diffusion:
         checkpoint: null
         condition:
             mode: addition
-            spatial_dims: 3
+            spatial_dims: 2
             in_channels: 1
             out_channels: 3
             num_res_blocks: 1

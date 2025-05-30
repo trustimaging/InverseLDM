@@ -109,13 +109,7 @@ class DiffusionRunner(BaseRunner):
                 # Update c_dim for xatnn
                 with torch.no_grad():
                     with torch.amp.autocast(str(self.device)):
-                        # For spatial conditioner, we need to handle the batch dimension properly
-                        if self.args.model.condition.spatial_dims > 1 and not self.use_slice_conditioning:
-                            # Remove batch dimension for test projection if needed
-                            test_c = c[0:1] if c.dim() == 4 else c  # Take first sample from batch
-                            projected_c = self.cond_proj(test_c.float().to(self.device))
-                        else:
-                            projected_c = self.cond_proj(c.float().to(self.device))
+                        projected_c = self.cond_proj(c.float().to(self.device))
                         print(f"DEBUG-DIFFUSION: Test condition projection: input={c.shape}, output={projected_c.shape}")
                         c_dim = projected_c.flatten(start_dim=2).shape[-1]
                         print(f"DEBUG-DIFFUSION: Updated c_dim={c_dim}")
