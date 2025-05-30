@@ -1,6 +1,6 @@
 data:
     dataset: Brain2D
-    data_path: /raid/dverschu/2d_slices_dataset/vp_slices/sagittal
+    data_path: /scratch_brain/dverschu/2d_slices_dataset/vp_slices/sagittal
     mode: vp
     maxsamples: null
     slowness: false
@@ -14,7 +14,7 @@ data:
     to_tensor: false
     normalise: false
     condition:
-        path: /raid/dverschu/InverseLDM
+        path: /scratch_brain/dverschu/InverseLDM
         mode: slice
         resize:
         - 256
@@ -26,7 +26,7 @@ data:
         clip_outliers: outer
         to_tensor: false
         normalise: false
-    dataset_path: /raid/dverschu/InverseLDM/invldm/datasets
+    dataset_path: /scratch_brain/dverschu/InverseLDM/invldm/datasets
     antialias: true
     sampling:
         in_size:
@@ -62,7 +62,7 @@ autoencoder:
         latent_channels: 3
         div_loss: kl
         adversarial_loss: true
-        checkpoint: /raid/dverschu/InverseLDM/exps/test_no_conditioning/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
+        checkpoint: /scratch_brain/dverschu/InverseLDM/exps/test_no_conditioning/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
         condition:
             mode: concat
     params:
@@ -202,7 +202,7 @@ diffusion:
     samples_path: exps/transfer_conditioning_strength0/logs/diffusion/samples
     sampling_only: false
 run:
-    config: /raid/dverschu/InverseLDM/transfer_learning_config.yml
+    config: /scratch_brain/dverschu/InverseLDM/transfer_learning_config.yml
     logdir: exps
     name: transfer_conditioning_strength0
     comment: ''
