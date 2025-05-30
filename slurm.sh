@@ -37,7 +37,7 @@ PRETRAINED_DIFFUSION="/raid/dverschu/InverseLDM/exps/test_no_conditioning/logs/d
 
 
 export WANDB_API_KEY='e709e9c43e2fcded8dc2dfd834d685f1bcb46d85'
-export WANDB_NAME="lower_strength"
+export WANDB_NAME="bigger_conditioning"
 export WANDB_PROJECT="conditioning"
 
 # Update the config file with correct paths
