@@ -140,13 +140,11 @@ diffusion:
             out_channels: 3
             num_blocks: 3
             num_res_blocks: 0
-            transformer_num_layers: 3
+            transformer_num_layers: 2
             num_channels:
             - 32
             - 64
-            - 128
             attention_levels:
-            - false
             - false
             - true
             resize_mode: bilinear
