@@ -13,8 +13,8 @@
 # Here, we ask for 1 node with exclusive access.
 # brainstorm has 256 CPU cores and 8 A100 GPUs.
 
-#SBATCH -e /raid/dverschu/lfr/slurm_outputs/slurm-%j.err              # File to redirect stderr
-#SBATCH -o /raid/dverschu/lfr/slurm_outputs/slurm-%j.out              # File to redirect stdout
+#SBATCH -e /scratch_brain/acd23/code/lfr/slurm_outputs/slurm-%j.err              # File to redirect stderr
+#SBATCH -o /scratch_brain/acd23/code/lfr/slurm_outputs/slurm-%j.out              # File to redirect stdout
 #SBATCH --mem=1900gb              # Total memory for the job (1500 MB * 256 CPUs)
 #SBATCH --time=20:00:00              # The walltime
 #SBATCH --nodes=1                    # Run all processes on a single node
