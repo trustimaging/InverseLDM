@@ -135,10 +135,10 @@ diffusion:
         checkpoint: null
         condition:
             mode: addition
-            spatial_dims: 2
+            spatial_dims: 0
             in_channels: 1
             out_channels: 3
-            num_res_blocks: 5
+            num_res_blocks: 0
             num_channels:
             - 32
             - 64
@@ -146,7 +146,7 @@ diffusion:
             attention_levels:
             - false
             - false
-            - false
+            - true
             resize_mode: bilinear
             dropout: 0.1
             strength: 0.5
