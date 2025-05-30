@@ -139,6 +139,7 @@ diffusion:
             in_channels: 1
             out_channels: 3
             num_blocks: 3
+            num_res_blocks: 0
             num_channels:
             - 32
             - 64
