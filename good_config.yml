@@ -1,6 +1,6 @@
 data:
     dataset: Brain2D
-    data_path: /scratch_brain/dverschu/2d_slices_dataset/vp_slices/sagittal
+    data_path: /scratch_brain/acd23/code/2d_slices_dataset/vp_slices/sagittal
     mode: vp
     maxsamples: null
     slowness: false
@@ -14,7 +14,7 @@ data:
     to_tensor: false
     normalise: false
     condition:
-        path: /scratch_brain/dverschu/InverseLDM
+        path: /scratch_brain/acd23/code/InverseLDM
         mode: slice
         resize:
         - 256
@@ -62,7 +62,7 @@ autoencoder:
         latent_channels: 3
         div_loss: kl
         adversarial_loss: true
-        checkpoint: /scratch_brain/dverschu/InverseLDM/exps/test_no_conditioning/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
+        checkpoint: /scratch_brain/acd23/code/InverseLDM/exps/test_no_conditioning/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
         condition:
             mode: concat
     params:
