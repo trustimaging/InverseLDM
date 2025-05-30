@@ -24,8 +24,18 @@
 #SBATCH --gres=gpu:8                 # Number of GPUs
 # This is where the actual work is done.
 
+export TORCH_HOME="/scratch_brain/acd23/torch_cache"
 
+# Option 2: Use a temporary directory
+# export TORCH_HOME="/tmp/torch_cache_$(whoami)"
 
+# Option 3: Use current working directory
+# export TORCH_HOME="$(pwd)/torch_cache"
+
+# Create the directory if it doesn't exist
+mkdir -p "$TORCH_HOME"
+
+echo "TORCH_HOME set to: $TORCH_HOME"
 # activate conda environment
 source /scratch_brain/acd23/miniconda3/etc/profile.d/conda.sh
 conda activate stride
