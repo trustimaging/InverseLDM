@@ -1,0 +1,207 @@
+autoencoder:
+  ckpt_path: exps/view_conditioning_sagittal/logs/autoencoder/checkpoints
+  log_path: exps/view_conditioning_sagittal/logs/autoencoder
+  model:
+    adversarial_loss: true
+    attention_levels:
+    - false
+    - false
+    - true
+    checkpoint: /scratch_brain/acd23/code/InverseLDM/exps/test_no_conditioning/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
+    condition:
+      mode: concat
+    div_loss: kl
+    embbeded_channels: 3
+    in_channels: 1
+    latent_channels: 3
+    num_channels:
+    - 64
+    - 128
+    - 128
+    num_res_blocks: 2
+    out_channels: 1
+    spatial_dims: 2
+    z_channels:
+    - 3
+    - 64
+    - 64
+  name: autoencoder
+  optim:
+    amsgrad: false
+    betas:
+    - 0.9
+    - 0.999
+    d_lr: 0.0005
+    eps: 1.0e-08
+    grad_clip: null
+    lr: 0.0001
+    lr_scheduler:
+      scheduler: null
+    optimiser: Adam
+    weight_decay: 0.0001
+  params:
+    adversarial_mode: least_squares
+    adversarial_weight: 0.1
+    disc_feature_channels: 16
+    disc_n_layers: 2
+    div_weight: 1.0e-05
+    kl_weight: 1.0e-06
+    lpips_mode: vgg
+    lpips_model: alex
+    perceptual_loss: lpips
+    perceptual_weight: 1.0
+    recon_loss: l1
+    recon_weight: 1.0
+    wiener_weight: 0.0
+  recon_path: exps/view_conditioning_sagittal/logs/autoencoder/recons
+  sampling_only: false
+  training:
+    batch_size: 32
+    ckpt_freq: 500
+    ckpt_last_only: true
+    n_epochs: 0
+    sampling_freq: 0
+    save_recon_freq: 500
+    warm_up_epochs: 5
+  validation:
+    batch_size: 32
+    freq: 50
+    save_recon_freq: 500
+    split: 0.2
+data:
+  antialias: true
+  clip_outliers: outer
+  condition:
+    antialias: false
+    clip_outliers: outer
+    mode: view
+    normalise: false
+    path: null
+    resize:
+    - 256
+    - 256
+    scale:
+    - 0
+    - 1.0
+    to_tensor: false
+  data_path: /scratch_brain/acd23/code/2d_slices_dataset/vp_slices/sagittal
+  dataset: Brain2D
+  dataset_path: /scratch_brain/acd23/code/InverseLDM/invldm/datasets
+  maxsamples: null
+  mode: vp
+  normalise: false
+  resize:
+  - 256
+  - 256
+  sampling:
+    in_channels: 3
+    in_size:
+    - 64
+    - 64
+    view_values:
+    - sagittal
+    - coronal
+    - axial
+  sampling_only: false
+  scale:
+  - 0
+  - 1.0
+  slowness: false
+  to_tensor: false
+diffusion:
+  ckpt_path: exps/view_conditioning_sagittal/logs/diffusion/checkpoints
+  log_path: exps/view_conditioning_sagittal/logs/diffusion
+  model:
+    attention_levels:
+    - false
+    - true
+    - true
+    - true
+    checkpoint: null
+    condition:
+      attention_levels:
+      - false
+      - false
+      - false
+      dropout: 0.1
+      in_channels: 3
+      mode: addition
+      num_channels:
+      - 32
+      - 64
+      - 128
+      num_res_blocks: 5
+      out_channels: 3
+      resize_mode: bilinear
+      spatial_dims: 2
+      strength: 0.7
+      transformer_num_layers: 1
+    dropout: 0.0
+    loss: l1
+    num_attn_heads: 8
+    num_channels:
+    - 64
+    - 128
+    - 256
+    - 512
+    num_res_blocks: 2
+    num_transformer_layers: 1
+    spatial_dims: 2
+    transformer_num_layers: 1
+    upcast_attention: false
+    use_flash_attention: false
+  name: diffusion
+  optim:
+    amsgrad: false
+    betas:
+    - 0.9
+    - 0.999
+    eps: 1.0e-08
+    grad_clip: 1.0
+    lr: 1.0e-06
+    lr_scheduler:
+      scheduler: null
+    optimiser: Adam
+    weight_decay: 0.0001
+  params:
+    beta_end: 0.0205
+    beta_start: 0.0015
+    latent_scaling_factor: 1.0
+    num_inference_timesteps: 50
+    num_train_timesteps: 1000
+    recon_loss: l2
+    sampler: ddim
+  samples_path: exps/view_conditioning_sagittal/logs/diffusion/samples
+  sampling:
+    batch_size: 8
+    in_channels: 3
+    in_size:
+    - 256
+    - 256
+    n_samples: 12
+    output: last_only
+    view_values:
+    - sagittal
+    - coronal
+    - axial
+  sampling_only: false
+  train_conditioner_only: true
+  training:
+    batch_size: 4
+    ckpt_freq: 100
+    ckpt_last_only: true
+    n_epochs: 10
+    sampling_freq: 2500
+    sampling_skip_steps: 0
+    sampling_temperature: 0.5
+  validation:
+    batch_size: 4
+    freq: 150
+    sampling_freq: 2500
+    split: 0.2
+logging:
+  plot:
+    cmap: oscar
+    vmax: 1.0
+    vmin: 0.3
+  tool: wandb

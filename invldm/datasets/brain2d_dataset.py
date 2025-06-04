@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from . import BaseDataset
 from ..utils.slice_condition import extract_slice_number, create_slice_condition
+from ..utils.view_condition import extract_view_type, create_view_condition
 
 
 class Brain2DDataset(BaseDataset):
@@ -117,6 +118,15 @@ class Brain2DDataset(BaseDataset):
                 # Create a condition tensor based on the slice number from filename
                 cond_shape = (1, y.shape[1], y.shape[2])  # Single channel with same spatial dimensions
                 cond = create_slice_condition(y_path, cond_shape)
+                if self.cond_transform:
+                    cond = self.cond_transform(cond)
+                return y, cond
+            # NEW: Special handling for view conditioning
+            elif self.args.condition.mode == "view":
+                # Create a condition tensor based on the view type from data path or filename
+                cond_shape = (3, y.shape[1], y.shape[2])  # 3 channels for richer view representation
+                # Use the data path to determine view type (more reliable than individual filenames)
+                cond = create_view_condition(self.args.data_path, cond_shape)
                 if self.cond_transform:
                     cond = self.cond_transform(cond)
                 return y, cond

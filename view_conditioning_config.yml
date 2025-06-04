@@ -1,0 +1,210 @@
+data:
+    dataset: Brain2D
+    data_path: /scratch_brain/acd23/code/2d_slices_dataset/vp_slices/sagittal  # This will be updated to point to different views
+    mode: vp
+    maxsamples: null
+    slowness: false
+    resize:
+    - 256
+    - 256
+    scale:
+    - 0
+    - 1.0
+    clip_outliers: outer
+    to_tensor: false
+    normalise: false
+    condition:
+        path: null  # Not needed for view conditioning
+        mode: view  # NEW: Use view-based conditioning
+        resize:
+        - 256
+        - 256
+        antialias: false
+        scale:
+        - 0
+        - 1.0
+        clip_outliers: outer
+        to_tensor: false
+        normalise: false
+    dataset_path: /scratch_brain/acd23/code/InverseLDM/invldm/datasets
+    antialias: true
+    sampling:
+        in_size:
+        - 64
+        - 64
+        in_channels: 3  # 3 channels for view conditioning
+        view_values:  # Optional: specify which views to sample
+        - sagittal
+        - coronal
+        - axial
+    sampling_only: false
+
+logging:
+    tool: wandb
+    plot:
+        vmin: 0.3
+        vmax: 1.0
+        cmap: oscar
+
+autoencoder:
+    model:
+        spatial_dims: 2
+        in_channels: 1
+        out_channels: 1
+        num_res_blocks: 2
+        num_channels:
+        - 64
+        - 128
+        - 128
+        z_channels:
+        - 3
+        - 64
+        - 64
+        attention_levels:
+        - false
+        - false
+        - true
+        embbeded_channels: 3  # Updated to handle 3-channel view conditioning
+        latent_channels: 3
+        div_loss: kl
+        adversarial_loss: true
+        checkpoint: /scratch_brain/acd23/code/InverseLDM/exps/test_no_conditioning/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
+        condition:
+            mode: concat
+    params:
+        recon_loss: l1
+        div_weight: 1.0e-05
+        kl_weight: 1.0e-06
+        perceptual_weight: 1.0
+        perceptual_loss: lpips
+        lpips_mode: vgg
+        recon_weight: 1.0
+        adversarial_weight: 0.1
+        lpips_model: alex
+        disc_n_layers: 2
+        disc_feature_channels: 16
+        adversarial_mode: least_squares
+        wiener_weight: 0.0
+    training:
+        batch_size: 32
+        n_epochs: 0  # Skip autoencoder training, use pretrained
+        save_recon_freq: 500
+        ckpt_freq: 500
+        ckpt_last_only: true
+        sampling_freq: 0
+        warm_up_epochs: 5
+    validation:
+        split: 0.2
+        batch_size: 32
+        freq: 50
+        save_recon_freq: 500
+    optim:
+        weight_decay: 0.0001
+        optimiser: Adam
+        lr: 0.0001
+        d_lr: 0.0005
+        betas:
+        - 0.9
+        - 0.999
+        amsgrad: false
+        eps: 1.0e-08
+        grad_clip: null
+        lr_scheduler:
+            scheduler: null
+    name: autoencoder
+    log_path: exps/view_conditioning/logs/autoencoder
+    ckpt_path: exps/view_conditioning/logs/autoencoder/checkpoints
+    recon_path: exps/view_conditioning/logs/autoencoder/recons
+    sampling_only: false
+
+diffusion:
+    train_conditioner_only: true
+    model:
+        num_channels:
+        - 64
+        - 128
+        - 256
+        - 512
+        num_res_blocks: 2
+        attention_levels:
+        - false
+        - true
+        - true
+        - true
+        num_transformer_layers: 1
+        num_attn_heads: 8
+        loss: l1
+        spatial_dims: 2
+        upcast_attention: false
+        use_flash_attention: false
+        transformer_num_layers: 1
+        dropout: 0.0
+        checkpoint: null
+        condition:
+            mode: addition
+            spatial_dims: 2
+            in_channels: 3  # 3 channels for view conditioning
+            out_channels: 3
+            num_res_blocks: 5
+            transformer_num_layers: 1
+            num_channels:
+            - 32
+            - 64
+            - 128
+            attention_levels:
+            - false
+            - false
+            - false
+            resize_mode: bilinear
+            dropout: 0.1
+            strength: 0.7  # Slightly higher strength for view conditioning
+    params:
+        recon_loss: l2
+        beta_start: 0.0015
+        beta_end: 0.0205
+        num_train_timesteps: 1000
+        num_inference_timesteps: 50
+        latent_scaling_factor: 1.0
+        sampler: ddim
+    training:
+        batch_size: 4
+        n_epochs: 10  # Train the conditioner for view-based conditioning
+        ckpt_freq: 100
+        ckpt_last_only: true
+        sampling_freq: 2500
+        sampling_temperature: 0.5
+        sampling_skip_steps: 0
+    validation:
+        split: 0.2
+        batch_size: 4
+        freq: 150
+        sampling_freq: 2500
+    sampling:
+        batch_size: 8
+        output: last_only
+        n_samples: 12  # Generate samples for all 3 views (4 samples per view)
+        view_values:  # Specify which views to generate
+        - sagittal
+        - coronal  
+        - axial
+        in_channels: 3  # 3 channels for view conditioning
+        in_size:
+        - 256
+        - 256
+    optim:
+        weight_decay: 0.0001
+        optimiser: Adam
+        lr: 1.0e-06
+        betas:
+        - 0.9
+        - 0.999
+        amsgrad: false
+        eps: 1.0e-08
+        grad_clip: 1.0
+        lr_scheduler:
+            scheduler: null
+    name: diffusion
+    log_path: exps/view_conditioning/logs/diffusion
+    ckpt_path: exps/view_conditioning/logs/diffusion/checkpoints
+    samples_path: exps/view_conditioning/logs/diffusion/samples
+    sampling_only: false 

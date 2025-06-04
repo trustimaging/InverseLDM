@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from . import BaseDataset
 from ..utils.slice_condition import create_slice_condition
+from ..utils.view_condition import create_view_condition
 
 
 class Brain2DSamplingDataset(BaseDataset):
@@ -38,6 +39,13 @@ class Brain2DSamplingDataset(BaseDataset):
             else:
                 # Generate evenly distributed slices
                 self.slice_numbers = torch.linspace(min_slice, max_slice, self.n_samples).int().tolist()
+        # NEW: For view conditioning, set up view types
+        elif self.args.condition.mode == "view":
+            # Set up available view types for sampling
+            self.view_types = kwargs.pop("view_types", ['sagittal', 'coronal', 'axial'])
+            if hasattr(self.args.sampling, "view_values") and self.args.sampling.view_values:
+                # Use specific view values if provided
+                self.view_types = self.args.sampling.view_values
         # Regular condition path handling
         elif self.args.condition.mode and self.args.condition.path:
             include = self.args.condition.mode
@@ -94,6 +102,20 @@ class Brain2DSamplingDataset(BaseDataset):
             if self.cond_transform:
                 cond = self.cond_transform(cond)
             return y, cond
+        # NEW: Handle view conditioning
+        elif self.args.condition.mode == "view" and hasattr(self, 'view_types'):
+            # Cycle through view types
+            view_type = self.view_types[index % len(self.view_types)]
+            # Create a dummy path containing the view type
+            dummy_path = f"/dummy/path/{view_type}/dummy_file.npy"
+            
+            # Create condition tensor with the view type
+            cond_shape = (3, y.shape[1], y.shape[2])  # 3 channels for view conditioning
+            cond = create_view_condition(dummy_path, cond_shape)
+            
+            if self.cond_transform:
+                cond = self.cond_transform(cond)
+            return y, cond
         # Regular file-based conditioning
         elif self.args.condition.mode is not None and self.args.condition.path is not None:
             cond_path = self.cond_paths[index]
@@ -108,6 +130,8 @@ class Brain2DSamplingDataset(BaseDataset):
     def __len__(self):
         if self.args.condition.mode == "slice" and self.slice_numbers is not None:
             return len(self.slice_numbers)
+        elif self.args.condition.mode == "view" and hasattr(self, 'view_types'):
+            return len(self.view_types) * (self.n_samples // len(self.view_types))
         elif self.args.condition.mode and self.cond_paths:
             return len(self.cond_paths)
         else:
