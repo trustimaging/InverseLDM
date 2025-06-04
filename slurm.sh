@@ -46,7 +46,7 @@ PRETRAINED_DIFFUSION="/scratch_brain/acd23/code/InverseLDM/exps/test_no_conditio
 
 
 export WANDB_API_KEY='e709e9c43e2fcded8dc2dfd834d685f1bcb46d85'
-export WANDB_NAME="transformer_conditioning"
+export WANDB_NAME="checking_good_config"
 export WANDB_PROJECT="conditioning"
 
 # Update the config file with correct paths
