@@ -135,6 +135,7 @@ diffusion:
         checkpoint: null  # Train from scratch
         condition:
             mode: null
+    params:
         recon_loss: l2
         beta_start: 0.0015
         beta_end: 0.0205
