@@ -46,23 +46,18 @@ PRETRAINED_DIFFUSION="/scratch_brain/acd23/code/InverseLDM/exps/test_no_conditio
 
 
 export WANDB_API_KEY='e709e9c43e2fcded8dc2dfd834d685f1bcb46d85'
-export WANDB_NAME="debug"
+export WANDB_NAME="base_model_all_views"
 export WANDB_PROJECT="view_conditioning"
 
-# Update the config file with correct paths
-echo "Updating config with pretrained model paths..."
-sed -i "s|/scratch_brain/acd23/code/InverseLDM/test_no_conditioning/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth|${PRETRAINED_AUTOENCODER}|g" transfer_learning_config.yml
-
-# Create a modified transfer_diffusion_runner.py with correct path
-sed -i "s|/scratch_brain/acd23/code/InverseLDM/exps/test_no_conditioning/logs/diffusion/checkpoints|$(dirname ${PRETRAINED_DIFFUSION})|g" invldm/runners/transfer_diffusion_runner.py
-
-# Run the transfer learning
-echo "Starting transfer learning..."
-python /scratch_brain/acd23/code/InverseLDM/train_multi_view.py \
-    --config /scratch_brain/acd23/code/InverseLDM/view_conditioning_config.yml \
+# Train the base model from scratch on all views combined
+echo "Starting base model training on all views..."
+python /scratch_brain/acd23/code/InverseLDM/train.py \
+    --config /scratch_brain/acd23/code/InverseLDM/base_model_all_views_config.yml \
     --name $WANDB_NAME \
+    --logdir exps \
     --gpu_ids [0,1,2,3,4,5,6,7] \
-    --sequential \
     --overwrite -y
 
-echo "Transfer learning complete!"
+echo "Base model training complete!"
+echo "Autoencoder checkpoint: exps/base_model_all_views/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth"
+echo "Diffusion checkpoint: exps/base_model_all_views/logs/diffusion/checkpoints/diffusion_ckpt_latest.pth"

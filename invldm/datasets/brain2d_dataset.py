@@ -45,13 +45,32 @@ class Brain2DDataset(BaseDataset):
         prefix = "m" if self.mode == "mri" else "vp"
         suffix = (".npy", ".npy.gz")
 
-        # Loop through folders and subfolders
-        for filename in os.listdir(path):
-            if filename.lower().startswith(prefix) and \
-                filename.lower().endswith(suffix):
-                self.data_paths.append(os.path.join(path, filename))
+        # Check if path contains specific view subdirectories (for multi-view training)
+        view_subdirs = ['sagittal', 'coronal', 'axial']
+        has_view_subdirs = any(os.path.isdir(os.path.join(path, subdir)) for subdir in view_subdirs)
+        
+        if has_view_subdirs:
+            # Multi-view case: load from all view subdirectories
+            print(f"DEBUG: Loading from multiple view directories in {path}")
+            for view_subdir in view_subdirs:
+                view_path = os.path.join(path, view_subdir)
+                if os.path.isdir(view_path):
+                    print(f"DEBUG: Loading {view_subdir} data from {view_path}")
+                    for filename in os.listdir(view_path):
+                        if filename.lower().startswith(prefix) and \
+                           filename.lower().endswith(suffix):
+                            self.data_paths.append(os.path.join(view_path, filename))
+        else:
+            # Single view case: load from the directory itself
+            print(f"DEBUG: Loading from single directory {path}")
+            for filename in os.listdir(path):
+                if filename.lower().startswith(prefix) and \
+                   filename.lower().endswith(suffix):
+                    self.data_paths.append(os.path.join(path, filename))
+        
         self.data_paths = self.data_paths[:maxsamples]
-        assert len(self.data_paths) > 0, f" Found no data samples to load in {path} with prefix {prefix} and suffixes {suffix}"
+        assert len(self.data_paths) > 0, f"Found no data samples to load in {path} with prefix {prefix} and suffixes {suffix}"
+        print(f"DEBUG: Loaded {len(self.data_paths)} total data samples")
         return None
     
     def _get_condition_path(self, data_path):
