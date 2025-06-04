@@ -8,7 +8,6 @@
 #SBATCH --job-name=presbrainaxial
 #SBATCH --partition=brain_main
 #SBATCH --qos=normal
-
 # Each job will utilise all of brainstorm's resources.
 # Here, we ask for 1 node with exclusive access.
 # brainstorm has 256 CPU cores and 8 A100 GPUs.
