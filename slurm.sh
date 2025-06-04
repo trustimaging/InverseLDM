@@ -62,6 +62,7 @@ python /scratch_brain/acd23/code/InverseLDM/train_multi_view.py \
     --config /scratch_brain/acd23/code/InverseLDM/view_conditioning_config.yml \
     --name $WANDB_NAME \
     --gpu_ids [0,1,2,3,4,5,6,7] \
+    --sequential \
     --overwrite -y
 
 echo "Transfer learning complete!"
