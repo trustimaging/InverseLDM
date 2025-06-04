@@ -142,10 +142,10 @@ class Brain2DDataset(BaseDataset):
                 return y, cond
             # NEW: Special handling for view conditioning
             elif self.args.condition.mode == "view":
-                # Create a condition tensor based on the view type from data path or filename
+                # Create a condition tensor based on the view type from individual file path
                 cond_shape = (3, y.shape[1], y.shape[2])  # 3 channels for richer view representation
-                # Use the data path to determine view type (more reliable than individual filenames)
-                cond = create_view_condition(self.args.data_path, cond_shape)
+                # Use the individual file path to determine view type (works for both single and multi-view loading)
+                cond = create_view_condition(y_path, cond_shape)
                 if self.cond_transform:
                     cond = self.cond_transform(cond)
                 return y, cond
