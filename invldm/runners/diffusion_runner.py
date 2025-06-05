@@ -390,13 +390,23 @@ class DiffusionRunner(BaseRunner):
             print(f"DEBUG-DIFFUSION: Generated timesteps: min={timesteps.min().item()}, max={timesteps.max().item()}")
             
             print(f"DEBUG-DIFFUSION: Calling inferer with mode={cond_mode}")
+            
+            # Use underlying model if batch size < number of GPUs
+            # DataParallel can't handle cases where batch_size < num_gpus
+            batch_size = z.shape[0]
+            if isinstance(self.model, nn.DataParallel) and batch_size < len(self.gpu_ids):
+                print(f"DEBUG-DIFFUSION: Using underlying model for training (batch_size={batch_size} < num_gpus={len(self.gpu_ids)})")
+                diffusion_model_for_training = self.model_module
+            else:
+                diffusion_model_for_training = self.model
+                
             noise_pred = self.inferer(
                 inputs=input,
                 noise=noise,
                 timesteps=timesteps,
                 condition=cond,
                 mode=cond_mode,
-                diffusion_model=self.model,
+                diffusion_model=diffusion_model_for_training,
                 autoencoder_model=self.autoencoder_module
             )
             
@@ -548,13 +558,23 @@ class DiffusionRunner(BaseRunner):
                         cond = cond.flatten(start_dim=2)
                 
             timesteps = torch.randint(0, self.inferer.scheduler.num_train_timesteps, (z.shape[0],), device=z.device).long()
+            
+            # Use underlying model if batch size < number of GPUs
+            # DataParallel can't handle cases where batch_size < num_gpus
+            batch_size = z.shape[0]
+            if isinstance(self.model, nn.DataParallel) and batch_size < len(self.gpu_ids):
+                print(f"DEBUG-DIFFUSION: Using underlying model for validation (batch_size={batch_size} < num_gpus={len(self.gpu_ids)})")
+                diffusion_model_for_validation = self.model_module
+            else:
+                diffusion_model_for_validation = self.model
+                
             noise_pred = self.inferer(
                 inputs=input,
                 noise=noise,
                 timesteps=timesteps,
                 condition=cond,
                 mode=cond_mode,
-                diffusion_model=self.model,
+                diffusion_model=diffusion_model_for_validation,
                 autoencoder_model=self.autoencoder_module
             )
             
@@ -648,9 +668,18 @@ class DiffusionRunner(BaseRunner):
         # Sample latent space with diffusion model
         logging.info("Sampling...")
         with torch.amp.autocast(str(self.device)):
+            # Use underlying model for sampling if batch size < number of GPUs
+            # DataParallel can't handle cases where batch_size < num_gpus
+            batch_size = z.shape[0]
+            if isinstance(self.model, nn.DataParallel) and batch_size < len(self.gpu_ids):
+                print(f"DEBUG-DIFFUSION: Using underlying model for sampling (batch_size={batch_size} < num_gpus={len(self.gpu_ids)})")
+                diffusion_model_for_sampling = self.model_module
+            else:
+                diffusion_model_for_sampling = self.model
+                
             samples = self.inferer.sample(
                 input_noise=z,
-                diffusion_model=self.model,
+                diffusion_model=diffusion_model_for_sampling,
                 scheduler=self.scheduler,
                 autoencoder_model=self.autoencoder_module,
                 conditioning=cond,
