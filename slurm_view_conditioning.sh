@@ -45,8 +45,8 @@ export WANDB_NAME="unified_view_conditioning"
 export WANDB_PROJECT="view_conditioning"
 
 # Base model checkpoints (should exist from previous training)
-BASE_AE_CKPT="/scratch_brain/acd23/code/InverseLDM/exps/base_model_all_views/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth"
-BASE_DIFF_CKPT="/scratch_brain/acd23/code/InverseLDM/exps/base_model_all_views/logs/diffusion/checkpoints/diffusion_ckpt_latest.pth"
+BASE_AE_CKPT="/scratch_brain/acd23/code/InverseLDM/exps/base_model_all_views_long/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth"
+BASE_DIFF_CKPT="/scratch_brain/acd23/code/InverseLDM/exps/base_model_all_views_long/logs/diffusion/checkpoints/diffusion_ckpt_latest.pth"
 
 echo "Starting unified view conditioning training..."
 echo "Experiment name: $WANDB_NAME"

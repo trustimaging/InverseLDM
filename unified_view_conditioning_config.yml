@@ -70,7 +70,7 @@ autoencoder:
         div_loss: kl
         adversarial_loss: true
         # Load the base model autoencoder
-        checkpoint: /scratch_brain/acd23/code/InverseLDM/exps/base_model_all_views/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
+        checkpoint: /scratch_brain/acd23/code/InverseLDM/exps/base_model_all_views_long/logs/autoencoder/checkpoints/autoencoder_ckpt_latest.pth
         condition:
             mode: concat
     params:
@@ -142,7 +142,7 @@ diffusion:
         transformer_num_layers: 1
         dropout: 0.0
         # Load the base model diffusion
-        checkpoint: /scratch_brain/acd23/code/InverseLDM/exps/base_model_all_views/logs/diffusion/checkpoints/diffusion_ckpt_latest.pth
+        checkpoint: /scratch_brain/acd23/code/InverseLDM/exps/base_model_all_views_long/logs/diffusion/checkpoints/diffusion_ckpt_latest.pth
         condition:
             mode: addition
             spatial_dims: 2

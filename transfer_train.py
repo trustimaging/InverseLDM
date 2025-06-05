@@ -171,7 +171,7 @@ if __name__ == "__main__":
     
     # Set the pretrained checkpoint path
     # This path should point to your unconditional diffusion model checkpoint
-    pretrained_diffusion_path = "/scratch_brain/acd23/code/InverseLDM/exps/base_model_all_views/logs/diffusion/checkpoints/diffusion_ckpt_latest.pth"
+    pretrained_diffusion_path = "/scratch_brain/acd23/code/InverseLDM/exps/base_model_all_views_long/logs/diffusion/checkpoints/diffusion_ckpt_latest.pth"
     
     # Add the pretrained_checkpoint attribute to the config
     if hasattr(args.diffusion, 'model'):
