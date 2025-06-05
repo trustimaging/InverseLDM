@@ -144,8 +144,8 @@ diffusion:
         latent_scaling_factor: 1.0
         sampler: ddim
     training:
-        batch_size: 4
-        n_epochs: 5  # Train diffusion model from scratch
+        batch_size: 16
+        n_epochs: 10  # Train diffusion model from scratch
         ckpt_freq: 100
         ckpt_last_only: true
         sampling_freq: 2500
