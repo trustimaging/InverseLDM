@@ -69,13 +69,16 @@ class Trainer():
         else:
             cond = None
         sample = sample.to(self.autoencoder_runner.device)
-        logging.info(summary(model=self.autoencoder_runner.model, input_size=sample.shape, device=self.autoencoder_runner.device))
+        
+        # Handle DataParallel wrapped model for summary
+        autoencoder_model = self.autoencoder_runner.model.module if hasattr(self.autoencoder_runner.model, 'module') else self.autoencoder_runner.model
+        logging.info(summary(model=autoencoder_model, input_size=sample.shape, device=self.autoencoder_runner.device))
 
         logging.info(" ---- Model - Diffusion ----")
         if self.args.diffusion.training.n_epochs > 0:
             with torch.no_grad():
-                mu, sigma = self.diffusion_runner.autoencoder.encode(sample.unsqueeze(0).float())
-                z = self.diffusion_runner.autoencoder.sampling(mu, sigma)
+                mu, sigma = self.diffusion_runner.autoencoder_module.encode(sample.unsqueeze(0).float())
+                z = self.diffusion_runner.autoencoder_module.sampling(mu, sigma)
                 t = torch.tensor([0]).repeat(z.shape[0])                
 
                 if cond is not None:
@@ -92,7 +95,9 @@ class Trainer():
                 else:
                     input_data = (z, t)
 
-            logging.info(summary(model=self.diffusion_runner.model, input_size=input_data, device=self.diffusion_runner.device))
+            # Handle DataParallel wrapped model for summary
+            diffusion_model = self.diffusion_runner.model.module if hasattr(self.diffusion_runner.model, 'module') else self.diffusion_runner.model
+            logging.info(summary(model=diffusion_model, input_size=input_data, device=self.diffusion_runner.device))
             logging.info(f"\n\nLatent size: {z.shape[1:]}")
             if "c" in locals():
                 logging.info(f"\nCondition (latent) size: {c.shape[1:]}\n\n")
