@@ -391,14 +391,8 @@ class DiffusionRunner(BaseRunner):
             
             print(f"DEBUG-DIFFUSION: Calling inferer with mode={cond_mode}")
             
-            # Use underlying model if batch size < number of GPUs
-            # DataParallel can't handle cases where batch_size < num_gpus
-            batch_size = z.shape[0]
-            if isinstance(self.model, nn.DataParallel) and batch_size < len(self.gpu_ids):
-                print(f"DEBUG-DIFFUSION: Using underlying model for training (batch_size={batch_size} < num_gpus={len(self.gpu_ids)})")
-                diffusion_model_for_training = self.model_module
-            else:
-                diffusion_model_for_training = self.model
+            # Use DataParallel-safe wrapper that automatically handles small batch sizes
+            diffusion_model_for_training = self._create_dataparallel_safe_model(self.model)
                 
             noise_pred = self.inferer(
                 inputs=input,
@@ -559,14 +553,8 @@ class DiffusionRunner(BaseRunner):
                 
             timesteps = torch.randint(0, self.inferer.scheduler.num_train_timesteps, (z.shape[0],), device=z.device).long()
             
-            # Use underlying model if batch size < number of GPUs
-            # DataParallel can't handle cases where batch_size < num_gpus
-            batch_size = z.shape[0]
-            if isinstance(self.model, nn.DataParallel) and batch_size < len(self.gpu_ids):
-                print(f"DEBUG-DIFFUSION: Using underlying model for validation (batch_size={batch_size} < num_gpus={len(self.gpu_ids)})")
-                diffusion_model_for_validation = self.model_module
-            else:
-                diffusion_model_for_validation = self.model
+            # Use DataParallel-safe wrapper that automatically handles small batch sizes
+            diffusion_model_for_validation = self._create_dataparallel_safe_model(self.model)
                 
             noise_pred = self.inferer(
                 inputs=input,
@@ -668,14 +656,9 @@ class DiffusionRunner(BaseRunner):
         # Sample latent space with diffusion model
         logging.info("Sampling...")
         with torch.amp.autocast(str(self.device)):
-            # Use underlying model for sampling if batch size < number of GPUs
-            # DataParallel can't handle cases where batch_size < num_gpus
-            batch_size = z.shape[0]
-            if isinstance(self.model, nn.DataParallel) and batch_size < len(self.gpu_ids):
-                print(f"DEBUG-DIFFUSION: Using underlying model for sampling (batch_size={batch_size} < num_gpus={len(self.gpu_ids)})")
-                diffusion_model_for_sampling = self.model_module
-            else:
-                diffusion_model_for_sampling = self.model
+            # Use DataParallel-safe wrapper that automatically handles small batch sizes
+            diffusion_model_for_sampling = self._create_dataparallel_safe_model(self.model)
+            print(f"DEBUG-DIFFUSION: Using DataParallel-safe wrapper for sampling")
                 
             samples = self.inferer.sample(
                 input_noise=z,
@@ -688,6 +671,40 @@ class DiffusionRunner(BaseRunner):
             )
 
         return samples, z
+
+    def _create_dataparallel_safe_model(self, model):
+        """
+        Create a wrapper around the model that handles DataParallel batch size issues.
+        When batch_size < num_gpus, use the underlying model instead of DataParallel.
+        """
+        class DataParallelSafeWrapper:
+            def __init__(self, model, underlying_model, gpu_ids):
+                self.model = model
+                self.underlying_model = underlying_model
+                self.gpu_ids = gpu_ids
+                
+            def __call__(self, *args, **kwargs):
+                # Check if first argument has batch dimension and if it's too small for DataParallel
+                if args:
+                    batch_size = args[0].shape[0] if hasattr(args[0], 'shape') and len(args[0].shape) > 0 else 1
+                else:
+                    batch_size = 1
+                
+                # Use underlying model if batch size is too small for DataParallel
+                if isinstance(self.model, nn.DataParallel) and batch_size < len(self.gpu_ids):
+                    print(f"DEBUG-WRAPPER: Using underlying model (batch_size={batch_size} < num_gpus={len(self.gpu_ids)})")
+                    return self.underlying_model(*args, **kwargs)
+                else:
+                    return self.model(*args, **kwargs)
+                    
+            def __getattr__(self, name):
+                # Delegate attribute access to the underlying model
+                return getattr(self.underlying_model, name)
+        
+        if isinstance(model, nn.DataParallel):
+            return DataParallelSafeWrapper(model, model.module, self.gpu_ids)
+        else:
+            return model
 
 
 class SpatialConditioner(DiffusionModelEncoder):
