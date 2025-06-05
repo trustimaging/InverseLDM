@@ -147,7 +147,9 @@ class AutoencoderRunner(BaseRunner):
                 loss += self.wiener_weight * w_loss
 
             if (self.adversarial_weight) > 0. and (self.epoch > self.args.training.warm_up_epochs):
-                logits_fake = self.discriminator(recon.contiguous().float())[-1]
+                # Handle DataParallel wrapped discriminator
+                discriminator_module = self.discriminator.module if isinstance(self.discriminator, nn.DataParallel) else self.discriminator
+                logits_fake = discriminator_module(recon.contiguous().float())[-1]
                 generator_loss = self.adversarial_loss_fn(logits_fake, target_is_real=True, for_discriminator=False)
                 loss += self.adversarial_weight * generator_loss
 
@@ -160,9 +162,11 @@ class AutoencoderRunner(BaseRunner):
             with torch.amp.autocast(str(self.device)):
                 self.optimiser_d.zero_grad(set_to_none=True)
 
-                logits_fake = self.discriminator(recon.contiguous().detach())[-1]
+                # Handle DataParallel wrapped discriminator
+                discriminator_module = self.discriminator.module if isinstance(self.discriminator, nn.DataParallel) else self.discriminator
+                logits_fake = discriminator_module(recon.contiguous().detach())[-1]
                 loss_d_fake = self.adversarial_loss_fn(logits_fake, target_is_real=False, for_discriminator=True)
-                logits_real = self.discriminator(input.contiguous().detach())[-1]
+                logits_real = discriminator_module(input.contiguous().detach())[-1]
                 loss_d_real = self.adversarial_loss_fn(logits_real, target_is_real=True, for_discriminator=True)
                 discriminator_loss = (loss_d_fake + loss_d_real) * 0.5
 
@@ -214,13 +218,15 @@ class AutoencoderRunner(BaseRunner):
                 loss += self.wiener_weight * w_loss
 
             if self.adversarial_weight > 0.:
-                logits_fake = self.discriminator(recon.contiguous().float())[-1]
+                # Handle DataParallel wrapped discriminator
+                discriminator_module = self.discriminator.module if isinstance(self.discriminator, nn.DataParallel) else self.discriminator
+                logits_fake = discriminator_module(recon.contiguous().float())[-1]
                 generator_loss = self.adversarial_loss_fn(logits_fake, target_is_real=True, for_discriminator=False)
                 loss += self.adversarial_weight * generator_loss
 
-                logits_fake = self.discriminator(recon.contiguous().detach())[-1]
+                logits_fake = discriminator_module(recon.contiguous().detach())[-1]
                 loss_d_fake = self.adversarial_loss_fn(logits_fake, target_is_real=False, for_discriminator=True)
-                logits_real = self.discriminator(input.contiguous().detach())[-1]
+                logits_real = discriminator_module(input.contiguous().detach())[-1]
                 loss_d_real = self.adversarial_loss_fn(logits_real, target_is_real=True, for_discriminator=True)
                 discriminator_loss = (loss_d_fake + loss_d_real) * 0.5
 

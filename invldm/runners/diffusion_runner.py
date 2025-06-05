@@ -25,8 +25,15 @@ class DiffusionRunner(BaseRunner):
         self.spatial_dims = kwargs.pop("spatial_dims")
         self.latent_channels = kwargs.pop("latent_channels")
         
+        # Handle DataParallel wrapped autoencoder
+        if isinstance(self.autoencoder, nn.DataParallel):
+            self.autoencoder_module = self.autoencoder.module
+        else:
+            self.autoencoder_module = self.autoencoder
+        
         print("DEBUG-DIFFUSION: Initializing DiffusionRunner")
         print(f"DEBUG-DIFFUSION: latent_channels={self.latent_channels}, spatial_dims={self.spatial_dims}")
+        print(f"DEBUG-DIFFUSION: Autoencoder is DataParallel: {isinstance(self.autoencoder, nn.DataParallel)}")
         
         in_channels = out_channels = self.latent_channels
         
@@ -72,7 +79,7 @@ class DiffusionRunner(BaseRunner):
         if not self.args.sampling_only: 
             with torch.no_grad():
                 with torch.amp.autocast(str(self.device)):
-                    z = self.autoencoder.encode_stage_2_inputs(x.float().to(self.device))
+                    z = self.autoencoder_module.encode_stage_2_inputs(x.float().to(self.device))
             sf = 1 / torch.std(z)
             print(f"DEBUG-DIFFUSION: Scaling factor set to {sf}, z.shape={z.shape}, z_mean={z.mean().item()}, z_std={torch.std(z).item()}")
             self.scale_factor = sf
@@ -152,6 +159,9 @@ class DiffusionRunner(BaseRunner):
             self.model = nn.DataParallel(self.model, device_ids=self.gpu_ids)
         else:
             print(f"DiffusionRunner: Using single GPU: {self.device}")
+            
+        # Store reference to underlying model for method access
+        self.model_module = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
 
         # Noise schedulers
         assert self.args.params.sampler.lower() in ["ddim", "ddpm", "pndm"]
@@ -265,7 +275,7 @@ class DiffusionRunner(BaseRunner):
 
     def train_step(self, input, **kwargs):
         self.model.train()
-        self.autoencoder.eval()
+        self.autoencoder_module.eval()
 
         # Dictionary of outputs
         output = {}
@@ -284,7 +294,7 @@ class DiffusionRunner(BaseRunner):
 
         # Forward pass: predict model noise based on condition
         with torch.amp.autocast(str(self.device)):
-            z_mu, z_sigma = self.autoencoder.encode(input)
+            z_mu, z_sigma = self.autoencoder_module.encode(input)
             
             # Check for NaN in encoding
             if torch.isnan(z_mu).any() or torch.isnan(z_sigma).any():
@@ -292,7 +302,7 @@ class DiffusionRunner(BaseRunner):
                 print(f"DEBUG-DIFFUSION: z_mu stats: min={z_mu.min().item()}, max={z_mu.max().item()}, mean={z_mu.mean().item()}")
                 print(f"DEBUG-DIFFUSION: z_sigma stats: min={z_sigma.min().item()}, max={z_sigma.max().item()}, mean={z_sigma.mean().item()}")
             
-            z = self.autoencoder.sampling(z_mu, z_sigma)
+            z = self.autoencoder_module.sampling(z_mu, z_sigma)
             
             # Check for NaN in latent
             if torch.isnan(z).any():
@@ -387,7 +397,7 @@ class DiffusionRunner(BaseRunner):
                 condition=cond,
                 mode=cond_mode,
                 diffusion_model=self.model,
-                autoencoder_model=self.autoencoder
+                autoencoder_model=self.autoencoder_module
             )
             
             # Check for NaN in model output
@@ -503,7 +513,7 @@ class DiffusionRunner(BaseRunner):
     @torch.no_grad()
     def valid_step(self, input, **kwargs):
         self.model.eval()
-        self.autoencoder.eval()
+        self.autoencoder_module.eval()
 
         # Get condition from kwargs
         cond = kwargs.pop("condition", None)
@@ -518,8 +528,8 @@ class DiffusionRunner(BaseRunner):
 
         # Forward pass: predict model noise based on condition
         with torch.amp.autocast(str(self.device)):
-            z_mu, z_sigma = self.autoencoder.encode(input)
-            z = self.autoencoder.sampling(z_mu, z_sigma)
+            z_mu, z_sigma = self.autoencoder_module.encode(input)
+            z = self.autoencoder_module.sampling(z_mu, z_sigma)
             noise = torch.randn_like(z).to(self.device)
             
             # Project and reshape condition
@@ -545,7 +555,7 @@ class DiffusionRunner(BaseRunner):
                 condition=cond,
                 mode=cond_mode,
                 diffusion_model=self.model,
-                autoencoder_model=self.autoencoder
+                autoencoder_model=self.autoencoder_module
             )
             
         # Compute validation loss
@@ -560,7 +570,7 @@ class DiffusionRunner(BaseRunner):
     @torch.no_grad()
     def sample_step(self, input, **kwargs):
         self.model.eval()
-        self.autoencoder.eval()
+        self.autoencoder_module.eval()
 
         # Get sampling parameters from kwargs
         num_inference_steps = kwargs.pop("num_inference_steps", self.num_inference_timesteps)
@@ -577,8 +587,8 @@ class DiffusionRunner(BaseRunner):
             is_slice_condition = False
 
         # One autoencoder forward pass to get shape of latent space -- can be optimised!
-        z_mu, z_sigma = self.autoencoder.encode(input)
-        z_ = self.autoencoder.sampling(z_mu, z_sigma)
+        z_mu, z_sigma = self.autoencoder_module.encode(input)
+        z_ = self.autoencoder_module.sampling(z_mu, z_sigma)
         z = torch.randn_like(z_).to(self.device)
             
         # Project and reshape condition
@@ -642,7 +652,7 @@ class DiffusionRunner(BaseRunner):
                 input_noise=z,
                 diffusion_model=self.model,
                 scheduler=self.scheduler,
-                autoencoder_model=self.autoencoder,
+                autoencoder_model=self.autoencoder_module,
                 conditioning=cond,
                 mode=cond_mode,
                 **kwargs
