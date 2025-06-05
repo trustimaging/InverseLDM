@@ -146,6 +146,13 @@ class DiffusionRunner(BaseRunner):
             **model_kwargs
         ).to(self.device)
 
+        # Enable multi-GPU training if multiple GPUs are available
+        if len(self.gpu_ids) > 1 and torch.cuda.device_count() > 1:
+            print(f"DiffusionRunner: Using DataParallel with {len(self.gpu_ids)} GPUs: {self.gpu_ids}")
+            self.model = nn.DataParallel(self.model, device_ids=self.gpu_ids)
+        else:
+            print(f"DiffusionRunner: Using single GPU: {self.device}")
+
         # Noise schedulers
         assert self.args.params.sampler.lower() in ["ddim", "ddpm", "pndm"]
         scheduler_class = globals()[self.args.params.sampler.upper()+"Scheduler"]

@@ -32,6 +32,13 @@ class AutoencoderRunner(BaseRunner):
 
         model_kwargs = filter_kwargs_by_class_init(AutoencoderKL, namespace2dict(self.args.model))
         self.model = AutoencoderKL(**model_kwargs).to(self.device)
+        
+        # Enable multi-GPU training if multiple GPUs are available
+        if len(self.gpu_ids) > 1 and torch.cuda.device_count() > 1:
+            print(f"AutoencoderRunner: Using DataParallel with {len(self.gpu_ids)} GPUs: {self.gpu_ids}")
+            self.model = nn.DataParallel(self.model, device_ids=self.gpu_ids)
+        else:
+            print(f"AutoencoderRunner: Using single GPU: {self.device}")
 
         if not self.args.sampling_only:
 
@@ -97,6 +104,11 @@ class AutoencoderRunner(BaseRunner):
                     in_channels=self.args.model.in_channels,
                     out_channels=self.args.model.out_channels,
                 ).to(self.device)
+                
+                # Enable multi-GPU for discriminator too
+                if len(self.gpu_ids) > 1 and torch.cuda.device_count() > 1:
+                    print(f"AutoencoderRunner: Using DataParallel for discriminator with {len(self.gpu_ids)} GPUs: {self.gpu_ids}")
+                    self.discriminator = nn.DataParallel(self.discriminator, device_ids=self.gpu_ids)
 
                 self.adversarial_loss_fn = PatchAdversarialLoss(criterion=self.args.params.adversarial_mode)
             

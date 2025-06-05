@@ -292,7 +292,31 @@ def check_devices(args):
                 gpu_ids.append(int(id))
             except ValueError:
                 pass
-            args.run.gpu_ids = gpu_ids
+        args.run.gpu_ids = gpu_ids
+        
+        # Set CUDA_VISIBLE_DEVICES to include all requested GPUs for multi-GPU training
+        if len(gpu_ids) > 1:
+            # Make all requested GPUs visible
+            visible_devices = ",".join(map(str, gpu_ids))
+            os.environ["CUDA_VISIBLE_DEVICES"] = visible_devices
+            print(f"Multi-GPU setup: Setting CUDA_VISIBLE_DEVICES={visible_devices}")
+            # Re-map GPU IDs to 0, 1, 2, ... for DataParallel
+            args.run.gpu_ids = list(range(len(gpu_ids)))
+            print(f"Remapped GPU IDs for DataParallel: {args.run.gpu_ids}")
+        elif len(gpu_ids) == 1:
+            # Single GPU case
+            os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_ids[0])
+            args.run.gpu_ids = [0]  # After setting CUDA_VISIBLE_DEVICES, use index 0
+            print(f"Single GPU setup: Setting CUDA_VISIBLE_DEVICES={gpu_ids[0]}")
+    else:
+        # No specific GPU IDs provided, use all available
+        if torch.cuda.is_available():
+            num_gpus = torch.cuda.device_count()
+            args.run.gpu_ids = list(range(num_gpus))
+            print(f"No GPU IDs specified, using all {num_gpus} available GPUs: {args.run.gpu_ids}")
+        else:
+            args.run.gpu_ids = []
+            
     return args
 
 
@@ -543,7 +567,8 @@ def _add_default_params(config, exp_name=None):
             config.device = "cuda:0"
         else:
             config.device = "cpu"
-    os.environ["CUDA_VISIBLE_DEVICES"] = config.device.split(":")[-1]
+    # Don't override CUDA_VISIBLE_DEVICES here - it should be set by check_devices for multi-GPU
+    # os.environ["CUDA_VISIBLE_DEVICES"] = config.device.split(":")[-1]
     config.device = "cuda:0" if "cuda" in config.device else "cpu"
 
     if not hasattr(config, "run"):
@@ -603,7 +628,8 @@ def _override_values(config):
         # Device settings
         if torch.cuda.is_available():
             device_idx = "0" if ":" not in config.device else config.device.split(":")[-1]
-            os.environ["CUDA_VISIBLE_DEVICES"] = device_idx
+            # Don't override CUDA_VISIBLE_DEVICES here - it should be set by check_devices for multi-GPU
+            # os.environ["CUDA_VISIBLE_DEVICES"] = device_idx
             config.device = "cuda:0"  # Always use first enumerated device
         else:
             os.environ["CUDA_VISIBLE_DEVICES"] = ""
